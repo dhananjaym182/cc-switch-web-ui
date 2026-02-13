@@ -404,6 +404,47 @@ export const skillsApi = {
     const response = await api.delete<ApiResponse<any>>('/skills/repos', { data: { repo } });
     return unwrap(response);
   },
+
+  discover: async (app?: string): Promise<any> => {
+    const params = new URLSearchParams();
+    if (app) params.append('app', app);
+    const response = await api.get<ApiResponse<any>>(`/skills/discover?${params.toString()}`);
+    return unwrap(response);
+  },
+
+  sync: async (app?: string): Promise<any> => {
+    const response = await api.post<ApiResponse<any>>('/skills/sync', { app });
+    return unwrap(response);
+  },
+
+  scanUnmanaged: async (app?: string): Promise<any> => {
+    const params = new URLSearchParams();
+    if (app) params.append('app', app);
+    const response = await api.get<ApiResponse<any>>(`/skills/scan-unmanaged?${params.toString()}`);
+    return unwrap(response);
+  },
+
+  importFromApps: async (app?: string): Promise<any> => {
+    const response = await api.post<ApiResponse<any>>('/skills/import-from-apps', { app });
+    return unwrap(response);
+  },
+
+  info: async (skillName: string, app?: string): Promise<any> => {
+    const params = new URLSearchParams();
+    if (app) params.append('app', app);
+    const response = await api.get<ApiResponse<any>>(`/skills/info/${skillName}?${params.toString()}`);
+    return unwrap(response);
+  },
+
+  getSyncMethod: async (): Promise<any> => {
+    const response = await api.get<ApiResponse<any>>('/skills/sync-method');
+    return unwrap(response);
+  },
+
+  setSyncMethod: async (method: 'auto' | 'symlink' | 'copy'): Promise<any> => {
+    const response = await api.post<ApiResponse<any>>('/skills/sync-method', { method });
+    return unwrap(response);
+  },
 };
 
 // ============================================

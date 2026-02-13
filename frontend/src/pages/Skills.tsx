@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, Plus, Trash2, Zap, Package, Power, PowerOff, FolderGit2} from 'lucide-react';
+import { RefreshCw, Plus, Trash2, Zap, Package, Power, PowerOff, FolderGit2, Search, Download, Upload, Info, Settings} from 'lucide-react';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -30,6 +30,22 @@ export function Skills() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  
+  // New features state
+  const [showDiscoverModal, setShowDiscoverModal] = useState(false);
+  const [discoveredSkills, setDiscoveredSkills] = useState<any[]>([]);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showUnmanagedModal, setShowUnmanagedModal] = useState(false);
+  const [unmanagedSkills, setUnmanagedSkills] = useState<any[]>([]);
+  const [isScanningUnmanaged, setIsScanningUnmanaged] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [showSkillInfoModal, setShowSkillInfoModal] = useState(false);
+  const [skillInfo, setSkillInfo] = useState<any>(null);
+  const [isLoadingInfo, setIsLoadingInfo] = useState(false);
+  const [showSyncMethodModal, setShowSyncMethodModal] = useState(false);
+  const [syncMethod, setSyncMethod] = useState<'auto' | 'symlink' | 'copy'>('auto');
+  const [isUpdatingSyncMethod, setIsUpdatingSyncMethod] = useState(false);
 
   const fetchSkills = async () => {
     setIsLoading(true);
@@ -173,6 +189,102 @@ export function Skills() {
     }
   };
 
+  // New feature handlers
+  const handleDiscover = async () => {
+    setIsDiscovering(true);
+    setError(null);
+    try {
+      const response = await skillsApi.discover(selectedApp);
+      setDiscoveredSkills(response.skills || []);
+      setShowDiscoverModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to discover skills');
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    setError(null);
+    try {
+      const result = await skillsApi.sync(selectedApp);
+      setSuccess(result.message || 'Skills synced successfully');
+      await fetchSkills();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync skills');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleScanUnmanaged = async () => {
+    setIsScanningUnmanaged(true);
+    setError(null);
+    try {
+      const response = await skillsApi.scanUnmanaged(selectedApp);
+      setUnmanagedSkills(response.skills || []);
+      setShowUnmanagedModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to scan unmanaged skills');
+    } finally {
+      setIsScanningUnmanaged(false);
+    }
+  };
+
+  const handleImportFromApps = async () => {
+    setIsImporting(true);
+    setError(null);
+    try {
+      const result = await skillsApi.importFromApps(selectedApp);
+      setSuccess(result.message || 'Skills imported successfully');
+      setShowUnmanagedModal(false);
+      await fetchSkills();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import skills');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleSkillInfo = async (skillName: string) => {
+    setIsLoadingInfo(true);
+    setError(null);
+    try {
+      const info = await skillsApi.info(skillName, selectedApp);
+      setSkillInfo(info);
+      setShowSkillInfoModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get skill info');
+    } finally {
+      setIsLoadingInfo(false);
+    }
+  };
+
+  const handleGetSyncMethod = async () => {
+    try {
+      const result = await skillsApi.getSyncMethod();
+      setSyncMethod(result.method || 'auto');
+      setShowSyncMethodModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get sync method');
+    }
+  };
+
+  const handleSetSyncMethod = async (method: 'auto' | 'symlink' | 'copy') => {
+    setIsUpdatingSyncMethod(true);
+    setError(null);
+    try {
+      await skillsApi.setSyncMethod(method);
+      setSyncMethod(method);
+      setSuccess(`Sync method set to: ${method}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to set sync method');
+    } finally {
+      setIsUpdatingSyncMethod(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -193,20 +305,32 @@ export function Skills() {
             Manage extensions and capabilities
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={fetchSkills}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-          <Button variant="secondary" onClick={() => setShowReposModal(true)}>
-            <FolderGit2 className="w-4 h-4 mr-2" />
-            Repos
-          </Button>
-          <Button onClick={() => setShowInstallModal(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Install Skill
-          </Button>
-        </div>
+        <div className="flex gap-2 flex-wrap">
+           <Button variant="secondary" onClick={fetchSkills}>
+             <RefreshCw className="w-4 h-4 mr-2" />
+             Refresh
+           </Button>
+           <Button variant="secondary" onClick={handleDiscover} disabled={isDiscovering}>
+             <Search className="w-4 h-4 mr-2" />
+             Discover
+           </Button>
+           <Button variant="secondary" onClick={handleSync} disabled={isSyncing}>
+             <Download className="w-4 h-4 mr-2" />
+             Sync
+           </Button>
+           <Button variant="secondary" onClick={() => setShowReposModal(true)}>
+             <FolderGit2 className="w-4 h-4 mr-2" />
+             Repos
+           </Button>
+           <Button variant="secondary" onClick={handleGetSyncMethod}>
+             <Settings className="w-4 h-4 mr-2" />
+             Settings
+           </Button>
+           <Button onClick={() => setShowInstallModal(true)}>
+             <Plus className="w-4 h-4 mr-2" />
+             Install Skill
+           </Button>
+         </div>
       </div>
 
       {/* Success message */}
@@ -257,38 +381,46 @@ export function Skills() {
             </div>
 
             {/* Action buttons */}
-            <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-              <button
-                onClick={() => handleToggle(skill)}
-                disabled={isToggling === skill.id}
-                className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
-                  skill.enabled === false
-                    ? 'text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
-                    : 'text-slate-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20'
-                }`}
-                title={skill.enabled === false ? 'Enable Skill' : 'Disable Skill'}
-              >
-                {isToggling === skill.id ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : skill.enabled === false ? (
-                  <PowerOff className="w-4 h-4" />
-                ) : (
-                  <Power className="w-4 h-4" />
-                )}
-              </button>
-              <button
-                onClick={() => handleUninstall(skill.name)}
-                disabled={isUninstalling === skill.name}
-                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
-                title="Uninstall Skill"
-              >
-                {isUninstalling === skill.name ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Trash2 className="w-4 h-4" />
-                )}
-              </button>
-            </div>
+             <div className="flex items-center justify-end gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+               <button
+                 onClick={() => handleSkillInfo(skill.name)}
+                 disabled={isLoadingInfo}
+                 className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors disabled:opacity-50"
+                 title="Skill Info"
+               >
+                 <Info className="w-4 h-4" />
+               </button>
+               <button
+                 onClick={() => handleToggle(skill)}
+                 disabled={isToggling === skill.id}
+                 className={`p-2 rounded-lg transition-colors disabled:opacity-50 ${
+                   skill.enabled === false
+                     ? 'text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20'
+                     : 'text-slate-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20'
+                 }`}
+                 title={skill.enabled === false ? 'Enable Skill' : 'Disable Skill'}
+               >
+                 {isToggling === skill.id ? (
+                   <RefreshCw className="w-4 h-4 animate-spin" />
+                 ) : skill.enabled === false ? (
+                   <PowerOff className="w-4 h-4" />
+                 ) : (
+                   <Power className="w-4 h-4" />
+                 )}
+               </button>
+               <button
+                 onClick={() => handleUninstall(skill.name)}
+                 disabled={isUninstalling === skill.name}
+                 className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
+                 title="Uninstall Skill"
+               >
+                 {isUninstalling === skill.name ? (
+                   <RefreshCw className="w-4 h-4 animate-spin" />
+                 ) : (
+                   <Trash2 className="w-4 h-4" />
+                 )}
+               </button>
+             </div>
           </Card>
         ))}
       </div>
@@ -524,7 +656,270 @@ export function Skills() {
             </Button>
           </div>
         </form>
+       </Modal>
+
+      {/* Discover Skills Modal */}
+      <Modal
+        isOpen={showDiscoverModal}
+        onClose={() => {
+          setShowDiscoverModal(false);
+          setDiscoveredSkills([]);
+        }}
+        title="Discover Skills"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Available skills from enabled repositories:
+          </p>
+          
+          {discoveredSkills.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+              <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No skills found in repositories</p>
+              <p className="text-xs mt-2">Add repositories to discover new skills</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {discoveredSkills.map((skill: any, index: number) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800"
+                >
+                  <div>
+                    <div className="font-medium text-slate-900 dark:text-white">{skill.name}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{skill.description}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {skill.installed && (
+                      <span className="text-xs text-green-600 dark:text-green-400">Installed</span>
+                    )}
+                    {!skill.installed && (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await skillsApi.install(skill.name, selectedApp);
+                            setSuccess(`Skill "${skill.name}" installed successfully`);
+                            // Refresh discovered skills
+                            const response = await skillsApi.discover(selectedApp);
+                            setDiscoveredSkills(response.skills || []);
+                            await fetchSkills();
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to install skill');
+                          }
+                        }}
+                      >
+                        Install
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-between mt-6">
+            <Button variant="secondary" onClick={handleScanUnmanaged} disabled={isScanningUnmanaged}>
+              <Upload className="w-4 h-4 mr-2" />
+              Scan Unmanaged
+            </Button>
+            <Button variant="secondary" onClick={() => setShowDiscoverModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
       </Modal>
-    </div>
-  );
-}
+
+      {/* Unmanaged Skills Modal */}
+      <Modal
+        isOpen={showUnmanagedModal}
+        onClose={() => {
+          setShowUnmanagedModal(false);
+          setUnmanagedSkills([]);
+        }}
+        title="Unmanaged Skills"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Skills found in app directories that are not managed by cc-switch:
+          </p>
+          
+          {unmanagedSkills.length === 0 ? (
+            <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+              <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>No unmanaged skills found</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {unmanagedSkills.map((skill: any, index: number) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800"
+                >
+                  <div>
+                    <div className="font-medium text-slate-900 dark:text-white">{skill.name}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate max-w-xs">
+                      {skill.path}
+                    </div>
+                    <div className="text-xs text-slate-400">App: {skill.app}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 mt-6">
+            <Button variant="secondary" onClick={() => setShowUnmanagedModal(false)}>
+              Close
+            </Button>
+            {unmanagedSkills.length > 0 && (
+              <Button onClick={handleImportFromApps} disabled={isImporting}>
+                {isImporting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import All
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Skill Info Modal */}
+      <Modal
+        isOpen={showSkillInfoModal}
+        onClose={() => {
+          setShowSkillInfoModal(false);
+          setSkillInfo(null);
+        }}
+        title="Skill Information"
+      >
+        <div className="space-y-4">
+          {skillInfo ? (
+            <div className="space-y-3">
+              <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-100 dark:border-slate-800">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Name:</span>
+                    <span className="text-sm font-medium text-slate-900 dark:text-white">{skillInfo.name}</span>
+                  </div>
+                  {skillInfo.description && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">Description:</span>
+                      <span className="text-sm text-slate-900 dark:text-white">{skillInfo.description}</span>
+                    </div>
+                  )}
+                  {skillInfo.version && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">Version:</span>
+                      <span className="text-sm text-slate-900 dark:text-white">{skillInfo.version}</span>
+                    </div>
+                  )}
+                  {skillInfo.author && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">Author:</span>
+                      <span className="text-sm text-slate-900 dark:text-white">{skillInfo.author}</span>
+                    </div>
+                  )}
+                  {skillInfo.path && (
+                    <div className="flex justify-between">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">Path:</span>
+                      <span className="text-sm font-mono text-slate-900 dark:text-white truncate max-w-xs" title={skillInfo.path}>
+                        {skillInfo.path}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Installed:</span>
+                    <span className={`text-sm ${skillInfo.installed ? 'text-green-600 dark:text-green-400' : 'text-slate-900 dark:text-white'}`}>
+                      {skillInfo.installed ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Enabled:</span>
+                    <span className={`text-sm ${skillInfo.enabled ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                      {skillInfo.enabled ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <RefreshCw className="w-8 h-8 mx-auto animate-spin text-slate-400" />
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Loading skill info...</p>
+            </div>
+          )}
+
+          <div className="flex justify-end mt-6">
+            <Button variant="secondary" onClick={() => setShowSkillInfoModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Sync Method Settings Modal */}
+      <Modal
+        isOpen={showSyncMethodModal}
+        onClose={() => setShowSyncMethodModal(false)}
+        title="Skills Sync Settings"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Choose how skills are synchronized to app directories:
+          </p>
+          
+          <div className="space-y-2">
+            {(['auto', 'symlink', 'copy'] as const).map((method) => (
+              <label
+                key={method}
+                className={`flex items-center p-3 rounded-lg border cursor-pointer transition-colors ${
+                  syncMethod === method
+                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="syncMethod"
+                  value={method}
+                  checked={syncMethod === method}
+                  onChange={() => handleSetSyncMethod(method)}
+                  disabled={isUpdatingSyncMethod}
+                  className="mr-3"
+                />
+                <div>
+                  <div className="font-medium text-slate-900 dark:text-white capitalize">{method}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {method === 'auto' && 'Automatically choose the best method (symlink on Unix, copy on Windows)'}
+                    {method === 'symlink' && 'Create symbolic links (requires admin on Windows)'}
+                    {method === 'copy' && 'Copy files to app directories'}
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex justify-between mt-6">
+            <Button variant="secondary" onClick={handleScanUnmanaged} disabled={isScanningUnmanaged}>
+              <Upload className="w-4 h-4 mr-2" />
+              Scan Unmanaged
+            </Button>
+            <Button variant="secondary" onClick={() => setShowSyncMethodModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+     </div>
+   );
+ }

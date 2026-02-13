@@ -4,6 +4,8 @@ import {
   ProviderListResponse,
   SwitchProviderResponse,
   StatusResponse,
+  isCoreApp,
+  AppType,
 } from '../types/index';
 import { configStorage } from './config-storage';
 
@@ -26,6 +28,21 @@ export class CCSwitchAdapter {
    */
   private getBinaryPath(): string {
     return this.defaultBinaryPath;
+  }
+
+  /**
+   * Get the app flag for CLI commands.
+   * Only core apps (claude, codex, gemini) are supported by the cc-switch CLI.
+   * Custom apps (kilocode-cli, opencode, amp) should not be passed to CLI commands.
+   * 
+   * @param app - The app type to check
+   * @returns Array of args for the --app flag, or empty array if custom app
+   */
+  private getAppFlagArgs(app?: string): string[] {
+    if (!app || !isCoreApp(app as AppType)) {
+      return [];
+    }
+    return ['--app', app];
   }
 
   /**
@@ -101,10 +118,7 @@ export class CCSwitchAdapter {
    */
   async listProviders(app?: string): Promise<ProviderListResponse> {
     try {
-      const args = ['provider', 'list'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'provider', 'list'];
       
       const result = await this.execute(args);
       
@@ -661,10 +675,7 @@ export class CCSwitchAdapter {
    */
   async deleteProvider(providerId: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['provider', 'delete', providerId];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'provider', 'delete', providerId];
       
       const result = await this.execute(args);
       
@@ -700,10 +711,7 @@ export class CCSwitchAdapter {
    */
   async getCurrentProvider(app?: string): Promise<{ id: string; name: string } | null> {
     try {
-      const args = ['provider', 'current'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'provider', 'current'];
       
       const result = await this.execute(args);
       
@@ -744,10 +752,7 @@ export class CCSwitchAdapter {
     env?: Record<string, string>;
   }>> {
     try {
-      const args = ['mcp', 'list'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'mcp', 'list'];
       
       const result = await this.execute(args);
       
@@ -921,10 +926,7 @@ export class CCSwitchAdapter {
    */
   async syncMcpServers(app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['mcp', 'sync'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'mcp', 'sync'];
       
       const result = await this.execute(args);
       
@@ -1014,10 +1016,7 @@ export class CCSwitchAdapter {
     updated?: string;
   }>> {
     try {
-      const args = ['prompts', 'list'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'prompts', 'list'];
       
       const result = await this.execute(args);
       
@@ -1091,10 +1090,7 @@ export class CCSwitchAdapter {
    */
   async activatePrompt(promptId: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['prompts', 'activate', promptId];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'prompts', 'activate', promptId];
       
       const result = await this.execute(args);
       
@@ -1123,10 +1119,7 @@ export class CCSwitchAdapter {
    */
   async deactivatePrompt(app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['prompts', 'deactivate'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'prompts', 'deactivate'];
       
       const result = await this.execute(args);
       
@@ -1237,10 +1230,7 @@ export class CCSwitchAdapter {
     installed: boolean;
   }>> {
     try {
-      const args = ['skills', 'list'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'list'];
       
       const result = await this.execute(args);
       
@@ -1313,10 +1303,7 @@ export class CCSwitchAdapter {
    */
   async installSkill(skillName: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['skills', 'install', skillName];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'install', skillName];
       
       const result = await this.execute(args);
       
@@ -1345,10 +1332,7 @@ export class CCSwitchAdapter {
    */
   async uninstallSkill(skillName: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['skills', 'uninstall', skillName];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'uninstall', skillName];
       
       const result = await this.execute(args);
       
@@ -1514,10 +1498,7 @@ export class CCSwitchAdapter {
    */
   async enableSkill(skillName: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['skills', 'enable', skillName];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'enable', skillName];
       
       const result = await this.execute(args);
       
@@ -1546,10 +1527,7 @@ export class CCSwitchAdapter {
    */
   async disableSkill(skillName: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['skills', 'disable', skillName];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'disable', skillName];
       
       const result = await this.execute(args);
       
@@ -1563,6 +1541,331 @@ export class CCSwitchAdapter {
       return {
         success: true,
         message: `Successfully disabled skill: ${skillName}`,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Discover available skills from enabled repos
+   */
+  async discoverSkills(app?: string): Promise<Array<{
+    name: string;
+    description: string;
+    installed: boolean;
+  }>> {
+    try {
+      const args = [...this.getAppFlagArgs(app), 'skills', 'discover'];
+      
+      const result = await this.execute(args);
+      
+      if (result.exitCode !== 0) {
+        return [];
+      }
+
+      return this.parseSkillsDiscover(result.stdout);
+    } catch (error) {
+      console.error('Error discovering skills:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse skills discover output
+   */
+  private parseSkillsDiscover(output: string): Array<{
+    name: string;
+    description: string;
+    installed: boolean;
+  }> {
+    const skills: Array<{ name: string; description: string; installed: boolean }> = [];
+
+    const lines = output.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed.includes('┆')) {
+        if (trimmed.includes('┌') || trimmed.includes('└') || trimmed.includes('╞') ||
+            trimmed.includes('═') || trimmed.includes('─') || trimmed.includes('Name') ||
+            trimmed.includes('Description')) {
+          continue;
+        }
+        
+        const cells = trimmed.split('┆').map(cell => cell.trim().replace(/[│┌┐└┘╞═╪╡║]/g, '').trim());
+        if (cells.length >= 2) {
+          const name = cells[0];
+          const description = cells[1] || '';
+          const installed = cells[2]?.includes('✓') || trimmed.includes('[installed]');
+          
+          if (name && name !== '' && !name.includes('ℹ') && !name.includes('→')) {
+            skills.push({ name, description, installed });
+          }
+        }
+      } else if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('===')) {
+        // Simple format parsing
+        const parts = trimmed.split(/\s{2,}/);
+        if (parts.length >= 1 && parts[0]) {
+          const name = parts[0];
+          const description = parts[1] || '';
+          const installed = trimmed.includes('[installed]');
+          
+          if (name && !name.includes('ℹ') && !name.includes('→')) {
+            skills.push({ name, description, installed });
+          }
+        }
+      }
+    }
+
+    return skills;
+  }
+
+  /**
+   * Sync enabled skills to app skills dirs
+   */
+  async syncSkills(app?: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const args = ['skills', 'sync'];
+      if (app) {
+        args.unshift('--app', app);
+      }
+      
+      const result = await this.execute(args);
+      
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          message: `Failed to sync skills: ${result.stderr || result.stdout}`,
+        };
+      }
+
+      return {
+        success: true,
+        message: result.stdout || 'Successfully synced skills',
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Scan unmanaged skills in app skills dirs
+   */
+  async scanUnmanagedSkills(app?: string): Promise<Array<{
+    name: string;
+    path: string;
+    app: string;
+  }>> {
+    try {
+      const args = ['skills', 'scan-unmanaged'];
+      if (app) {
+        args.unshift('--app', app);
+      }
+      
+      const result = await this.execute(args);
+      
+      if (result.exitCode !== 0) {
+        return [];
+      }
+
+      return this.parseUnmanagedSkills(result.stdout);
+    } catch (error) {
+      console.error('Error scanning unmanaged skills:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse unmanaged skills output
+   */
+  private parseUnmanagedSkills(output: string): Array<{
+    name: string;
+    path: string;
+    app: string;
+  }> {
+    const skills: Array<{ name: string; path: string; app: string }> = [];
+
+    if (output.includes('No unmanaged skills found')) {
+      return skills;
+    }
+
+    const lines = output.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      
+      if (trimmed.includes('┆')) {
+        const cells = trimmed.split('┆').map(cell => cell.trim().replace(/[│┌┐└┘╞═╪╡║]/g, '').trim());
+        if (cells.length >= 3) {
+          const name = cells[0];
+          const path = cells[1];
+          const app = cells[2];
+          
+          if (name && name !== '' && !name.includes('ℹ') && !name.includes('→') && name !== 'Name') {
+            skills.push({ name, path, app });
+          }
+        }
+      }
+    }
+
+    return skills;
+  }
+
+  /**
+   * Import unmanaged skills from app skills dirs into SSOT
+   */
+  async importSkillsFromApps(app?: string): Promise<{ success: boolean; message: string; imported?: string[] }> {
+    try {
+      const args = ['skills', 'import-from-apps'];
+      if (app) {
+        args.unshift('--app', app);
+      }
+      
+      const result = await this.execute(args);
+      
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          message: `Failed to import skills: ${result.stderr || result.stdout}`,
+        };
+      }
+
+      // Try to parse imported skill names from output
+      const imported: string[] = [];
+      const importMatch = result.stdout.match(/Imported:\s*(.+)/i);
+      if (importMatch) {
+        imported.push(...importMatch[1].split(',').map(s => s.trim()));
+      }
+
+      return {
+        success: true,
+        message: result.stdout || 'Successfully imported skills',
+        imported,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        success: false,
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Get skill information
+   */
+  async getSkillInfo(skillName: string, app?: string): Promise<{
+    name: string;
+    description?: string;
+    version?: string;
+    author?: string;
+    path?: string;
+    enabled?: boolean;
+    installed?: boolean;
+  } | null> {
+    try {
+      const args = ['skills', 'info', skillName];
+      if (app) {
+        args.unshift('--app', app);
+      }
+      
+      const result = await this.execute(args);
+      
+      if (result.exitCode !== 0) {
+        return null;
+      }
+
+      return this.parseSkillInfo(result.stdout);
+    } catch (error) {
+      console.error('Error getting skill info:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Parse skill info output
+   */
+  private parseSkillInfo(output: string): {
+    name: string;
+    description?: string;
+    version?: string;
+    author?: string;
+    path?: string;
+    enabled?: boolean;
+    installed?: boolean;
+  } | null {
+    const info: Record<string, string | boolean> = {};
+    
+    const lines = output.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const colonIndex = trimmed.indexOf(':');
+      
+      if (colonIndex > 0) {
+        const key = trimmed.substring(0, colonIndex).trim().toLowerCase();
+        const value = trimmed.substring(colonIndex + 1).trim();
+        
+        if (key === 'name') info.name = value;
+        else if (key === 'description') info.description = value;
+        else if (key === 'version') info.version = value;
+        else if (key === 'author') info.author = value;
+        else if (key === 'path') info.path = value;
+        else if (key === 'enabled') info.enabled = value.toLowerCase() === 'true' || value === 'yes';
+        else if (key === 'installed') info.installed = value.toLowerCase() === 'true' || value === 'yes';
+      }
+    }
+
+    return info.name ? info as any : null;
+  }
+
+  /**
+   * Get or set the skills sync method
+   */
+  async getSyncMethod(): Promise<{ method: string }> {
+    try {
+      const result = await this.execute(['skills', 'sync-method']);
+      
+      if (result.exitCode !== 0) {
+        return { method: 'auto' };
+      }
+
+      // Parse the sync method from output
+      const match = result.stdout.match(/(?:method|sync.method):\s*(\w+)/i);
+      if (match && match[1]) {
+        return { method: match[1].toLowerCase() };
+      }
+
+      return { method: 'auto' };
+    } catch (error) {
+      console.error('Error getting sync method:', error);
+      return { method: 'auto' };
+    }
+  }
+
+  /**
+   * Set the skills sync method
+   */
+  async setSyncMethod(method: 'auto' | 'symlink' | 'copy'): Promise<{ success: boolean; message: string }> {
+    try {
+      const result = await this.execute(['skills', 'sync-method', method]);
+      
+      if (result.exitCode !== 0) {
+        return {
+          success: false,
+          message: `Failed to set sync method: ${result.stderr || result.stdout}`,
+        };
+      }
+
+      return {
+        success: true,
+        message: `Successfully set sync method to: ${method}`,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
