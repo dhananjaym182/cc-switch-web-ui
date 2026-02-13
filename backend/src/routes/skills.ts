@@ -106,12 +106,12 @@ router.post('/uninstall', async (req: Request, res: Response) => {
  * Search skills
  */
 router.get('/search', async (req: Request, res: Response) => {
-  const query = req.query.q as string;
+  const query = (req.query.q || req.query.query) as string;
 
   if (!query) {
     res.status(400).json({
       success: false,
-      error: 'Query parameter q is required',
+      error: 'Query parameter q or query is required',
     });
     return;
   }
