@@ -841,9 +841,11 @@ export class CCSwitchAdapter {
       const enableClaude = params.app === 'claude' || !params.app ? 1 : 0;
       const enableCodex = params.app === 'codex' ? 1 : 0;
       const enableGemini = params.app === 'gemini' ? 1 : 0;
-      const enableOpencode = 0;
+      const enableOpencode = params.app === 'opencode' ? 1 : 0;
+      const enableKilocodeCli = params.app === 'kilocode-cli' ? 1 : 0;
+      const enableAmp = params.app === 'amp' ? 1 : 0;
 
-      const sql = `INSERT OR REPLACE INTO mcp_servers (id, name, server_config, description, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode) VALUES ('${id}', '${params.name}', '${serverConfigStr.replace(/'/g, "''")}', '', ${enableClaude}, ${enableCodex}, ${enableGemini}, ${enableOpencode});`;
+      const sql = `INSERT OR REPLACE INTO mcp_servers (id, name, server_config, description, enabled_claude, enabled_codex, enabled_gemini, enabled_opencode, enabled_kilocode_cli, enabled_amp) VALUES ('${id}', '${params.name}', '${serverConfigStr.replace(/'/g, "''")}', '', ${enableClaude}, ${enableCodex}, ${enableGemini}, ${enableOpencode}, ${enableKilocodeCli}, ${enableAmp});`;
 
       const dbPath = await this.getDbPath();
       return await this.executeSqlite(dbPath, sql);
