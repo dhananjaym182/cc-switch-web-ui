@@ -510,6 +510,7 @@ export class CCSwitchAdapter {
     notes?: string;
     sortIndex?: number;
     model?: string;
+    models?: Record<string, any>;
     haikuModel?: string;
     sonnetModel?: string;
     opusModel?: string;
@@ -644,6 +645,7 @@ export class CCSwitchAdapter {
     notes?: string;
     sortIndex?: number;
     model?: string;
+    models?: Record<string, any>;
     haikuModel?: string;
     sonnetModel?: string;
     opusModel?: string;
@@ -840,10 +842,34 @@ export class CCSwitchAdapter {
              
              // Extract config from Kilocode provider
              const pConfig = provider.config || {};
-             const apiKey = (pConfig.openaiApiKey as string) || (pConfig.apiKey as string) || (pConfig.kilocodeToken as string) || (pConfig.litellmApiKey as string) || '';
-             const baseUrl = (pConfig.openaiBaseUrl as string) || (pConfig.baseUrl as string) || (pConfig.litellmBaseUrl as string) || '';
-             const model = (pConfig.openaiModel as string) || (pConfig.model as string) || (pConfig.kilocodeModel as string) || (pConfig.litellmModelId as string) || '';
              
+             // Parse Opencode structure
+             const options = (pConfig.options as Record<string, any>) || {};
+             const models = (pConfig.models as Record<string, any>) || {};
+             
+             let apiKey = options.apiKey || (pConfig.apiKey as string) || '';
+             let baseUrl = options.baseURL || options.baseUrl || (pConfig.baseUrl as string) || (pConfig.api as string) || '';
+             let model = '';
+             
+             // Get the first model key if available
+             const modelKeys = Object.keys(models);
+             if (modelKeys.length > 0) {
+               model = modelKeys[0];
+             }
+             
+             // Fallbacks for legacy/flat config
+             if (!apiKey) apiKey = (pConfig.openaiApiKey as string) || (pConfig.kilocodeToken as string) || (pConfig.litellmApiKey as string) || '';
+             if (!baseUrl) baseUrl = (pConfig.openaiBaseUrl as string) || (pConfig.litellmBaseUrl as string) || '';
+             if (!model) model = (pConfig.openaiModel as string) || (pConfig.model as string) || (pConfig.kilocodeModel as string) || (pConfig.litellmModelId as string) || '';
+             
+             // Extract usePromptCache
+             let usePromptCache = false;
+             if (model && models[model]) {
+               usePromptCache = !!models[model].usePromptCache;
+             } else {
+               usePromptCache = (pConfig.litellmUsePromptCache as boolean) || false;
+             }
+
              if (destApp === 'kilocode-cli') {
                // Duplicate within Kilocode
                await kilocodeService.addProvider({
@@ -853,7 +879,7 @@ export class CCSwitchAdapter {
                  apiKey: apiKey,
                  model: model,
                  providerType: (pConfig.provider as string) || 'openai',
-                 usePromptCache: (pConfig.litellmUsePromptCache as boolean) || false,
+                 usePromptCache: usePromptCache,
                });
                return { success: true, message: `Successfully duplicated provider '${id}' to '${newId}'` };
              } else {

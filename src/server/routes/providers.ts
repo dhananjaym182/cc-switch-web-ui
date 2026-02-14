@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { ccSwitchAdapter } from '../services/ccswitch-adapter.js';
 import { configStorage } from '../services/config-storage.js';
+import { kilocodeService } from '../services/kilocode-service.js';
 
 const router = Router();
 
@@ -34,7 +35,7 @@ router.get('/', async (req: Request, res: Response) => {
  * Add a new provider
  */
 router.post('/add', async (req: Request, res: Response) => {
-  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, haikuModel, sonnetModel, opusModel, providerType, usePromptCache } = req.body;
+  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, models, haikuModel, sonnetModel, opusModel, providerType, usePromptCache } = req.body;
 
   if (!id || !name) {
     res.status(400).json({
@@ -64,6 +65,7 @@ router.post('/add', async (req: Request, res: Response) => {
       notes,
       sortIndex,
       model,
+      models,
       haikuModel,
       sonnetModel,
       opusModel,
@@ -155,6 +157,52 @@ router.get('/current', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/providers/kilocode/config
+ * Get raw kilocode config
+ */
+router.get('/kilocode/config', async (req: Request, res: Response) => {
+  try {
+    const config = await kilocodeService.getRawConfig();
+    res.json({
+      success: true,
+      data: config,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to get kilocode config';
+    res.status(500).json({
+      success: false,
+      error: message,
+    });
+  }
+});
+
+/**
+ * POST /api/providers/kilocode/config
+ * Save raw kilocode config
+ */
+router.post('/kilocode/config', async (req: Request, res: Response) => {
+  try {
+    const { content } = req.body;
+    if (typeof content !== 'string') {
+      throw new Error('Content must be a string');
+    }
+    
+    await kilocodeService.saveRawConfig(content);
+    
+    res.json({
+      success: true,
+      message: 'Configuration saved successfully',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to save kilocode config';
+    res.status(500).json({
+      success: false,
+      error: message,
+    });
+  }
+});
+
+/**
  * GET /api/providers/:providerId
  * Get a single provider by ID with full configuration
  */
@@ -191,7 +239,7 @@ router.get('/:providerId', async (req: Request, res: Response) => {
  * Edit an existing provider
  */
 router.post('/edit', async (req: Request, res: Response) => {
-  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, haikuModel, sonnetModel, opusModel, providerType, usePromptCache } = req.body;
+  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, models, haikuModel, sonnetModel, opusModel, providerType, usePromptCache } = req.body;
 
   if (!id) {
     res.status(400).json({
@@ -212,6 +260,7 @@ router.post('/edit', async (req: Request, res: Response) => {
       notes,
       sortIndex,
       model,
+      models,
       haikuModel,
       sonnetModel,
       opusModel,

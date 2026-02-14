@@ -36,7 +36,8 @@ export function Providers() {
     sonnetModel: '',
     opusModel: '',
     providerType: 'openai',
-    usePromptCache: false
+    usePromptCache: false,
+    models: {} as Record<string, any>
   });
   const [editProvider, setEditProvider] = useState({
     id: '',
@@ -51,7 +52,8 @@ export function Providers() {
     sonnetModel: '',
     opusModel: '',
     providerType: 'openai',
-    usePromptCache: false
+    usePromptCache: false,
+    models: {} as Record<string, any>
   });
   
   // Speedtest state
@@ -64,6 +66,11 @@ export function Providers() {
   const [duplicateNewId, setDuplicateNewId] = useState('');
   const [duplicateTargetApp, setDuplicateTargetApp] = useState<string>('');
   const [isDuplicating, setIsDuplicating] = useState(false);
+
+  // Config editor state
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [configContent, setConfigContent] = useState('');
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
 
   const fetchProviders = async () => {
     setIsLoading(true);
@@ -154,7 +161,7 @@ export function Providers() {
     try {
       await providersApi.add(newProvider, selectedApp);
       setShowAddModal(false);
-      setNewProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '', providerType: 'openai', usePromptCache: false });
+      setNewProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '', providerType: 'openai', usePromptCache: false, models: {} });
       await fetchProviders();
       setSuccess('Provider added successfully');
     } catch (err) {
@@ -183,6 +190,7 @@ export function Providers() {
       let haikuModel = '';
       let sonnetModel = '';
       let opusModel = '';
+      let usePromptCache = false;
       
       if (app === 'claude') {
         apiUrl = env.ANTHROPIC_BASE_URL || '';
@@ -206,17 +214,20 @@ export function Providers() {
         apiUrl = baseUrlMatch ? baseUrlMatch[1] : '';
         model = modelMatch ? modelMatch[1] : '';
       } else if (app === 'kilocode-cli') {
-        if (config.provider === 'kilocode') {
-          apiKey = (config.kilocodeToken as string) || '';
-          model = (config.kilocodeModel as string) || '';
-        } else if (config.provider === 'litellm') {
-          apiKey = (config.litellmApiKey as string) || '';
-          model = (config.litellmModelId as string) || '';
-          apiUrl = (config.litellmBaseUrl as string) || '';
-        } else {
-          apiKey = (config.openaiApiKey as string) || '';
-          model = (config.openaiModel as string) || '';
-          apiUrl = (config.openaiBaseUrl as string) || '';
+        // Parse Opencode structure
+        const options = (config.options as Record<string, any>) || {};
+        const models = (config.models as Record<string, any>) || {};
+        
+        apiUrl = options.baseURL || options.baseUrl || (config.api as string) || '';
+        apiKey = options.apiKey || '';
+        
+        // Get the first model key if available
+        const modelKeys = Object.keys(models);
+        model = modelKeys.length > 0 ? modelKeys[0] : '';
+        
+        // Check for prompt cache in the first model
+        if (model && models[model]) {
+          usePromptCache = !!models[model].usePromptCache;
         }
       }
       
@@ -235,8 +246,9 @@ export function Providers() {
         haikuModel,
         sonnetModel,
         opusModel,
-        providerType: (config.provider as string) || 'openai',
-        usePromptCache: (config.litellmUsePromptCache as boolean) || false
+        providerType: 'openai', // Default to OpenAI compatible for now
+        usePromptCache: usePromptCache || false,
+        models: (config.models as Record<string, any>) || {}
       });
     } catch (err) {
       console.error('Failed to fetch provider details:', err);
@@ -251,6 +263,7 @@ export function Providers() {
       let haikuModel = '';
       let sonnetModel = '';
       let opusModel = '';
+      let usePromptCache = false;
       
       if (app === 'claude') {
         apiUrl = env.ANTHROPIC_BASE_URL || '';
@@ -264,19 +277,18 @@ export function Providers() {
         apiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
         model = env.GEMINI_MODEL || '';
       } else if (app === 'kilocode-cli') {
-        // Fallback logic for kilocode if API fetch failed (though we usually rely on API fetch)
-        // This part might be less critical if API fetch succeeds
-        if (config.provider === 'kilocode') {
-          apiKey = (config.kilocodeToken as string) || '';
-          model = (config.kilocodeModel as string) || '';
-        } else if (config.provider === 'litellm') {
-          apiKey = (config.litellmApiKey as string) || '';
-          model = (config.litellmModelId as string) || '';
-          apiUrl = (config.litellmBaseUrl as string) || '';
-        } else {
-          apiKey = (config.openaiApiKey as string) || '';
-          model = (config.openaiModel as string) || '';
-          apiUrl = (config.openaiBaseUrl as string) || '';
+        // Parse Opencode structure (fallback)
+        const options = (config.options as Record<string, any>) || {};
+        const models = (config.models as Record<string, any>) || {};
+        
+        apiUrl = options.baseURL || options.baseUrl || (config.api as string) || '';
+        apiKey = options.apiKey || '';
+        
+        const modelKeys = Object.keys(models);
+        model = modelKeys.length > 0 ? modelKeys[0] : '';
+        
+        if (model && models[model]) {
+          usePromptCache = !!models[model].usePromptCache;
         }
       }
       
@@ -292,8 +304,9 @@ export function Providers() {
         haikuModel,
         sonnetModel,
         opusModel,
-        providerType: (config.provider as string) || 'openai',
-        usePromptCache: (config.litellmUsePromptCache as boolean) || false
+        providerType: 'openai',
+        usePromptCache: usePromptCache || false,
+        models: (config.models as Record<string, any>) || {}
       });
     }
     setShowEditModal(true);
@@ -308,7 +321,7 @@ export function Providers() {
     try {
       await providersApi.edit(editProvider, selectedApp);
       setShowEditModal(false);
-      setEditProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '', providerType: 'openai', usePromptCache: false });
+      setEditProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '', providerType: 'openai', usePromptCache: false, models: {} });
       await fetchProviders();
       setSuccess('Provider updated successfully');
     } catch (err) {
@@ -367,9 +380,9 @@ export function Providers() {
     setError(null);
     try {
       await providersApi.duplicate(
-        duplicateProvider.id, 
-        duplicateNewId, 
-        selectedApp, 
+        duplicateProvider.id,
+        duplicateNewId,
+        selectedApp,
         duplicateTargetApp !== selectedApp ? duplicateTargetApp : undefined
       );
       setShowDuplicateModal(false);
@@ -388,6 +401,32 @@ export function Providers() {
       setError(err instanceof Error ? err.message : 'Failed to duplicate provider');
     } finally {
       setIsDuplicating(false);
+    }
+  };
+
+  const handleOpenConfig = async () => {
+    try {
+      const config = await providersApi.getKilocodeConfig();
+      setConfigContent(config);
+      setShowConfigModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load config');
+    }
+  };
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingConfig(true);
+    setError(null);
+    try {
+      await providersApi.saveKilocodeConfig(configContent);
+      setShowConfigModal(false);
+      setSuccess('Configuration saved successfully');
+      await fetchProviders(); // Refresh list as config might have changed providers
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save config');
+    } finally {
+      setIsSavingConfig(false);
     }
   };
 
@@ -412,6 +451,12 @@ export function Providers() {
           </p>
         </div>
         <div className="flex gap-2">
+          {selectedApp === 'kilocode-cli' && (
+            <Button variant="secondary" onClick={handleOpenConfig}>
+              <Edit className="w-4 h-4 mr-2" />
+              Edit Config
+            </Button>
+          )}
           <Button variant="secondary" onClick={fetchProviders}>
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
@@ -671,32 +716,98 @@ export function Providers() {
                   <option value="litellm">LiteLLM Proxy</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Model
-                </label>
-                <input
-                  type="text"
-                  value={newProvider.model}
-                  onChange={(e) => setNewProvider({ ...newProvider, model: e.target.value })}
-                  placeholder="e.g. gpt-4o"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-slate-900 dark:text-white"
-                />
-              </div>
-              {newProvider.providerType === 'litellm' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="newUsePromptCache"
-                    checked={newProvider.usePromptCache}
-                    onChange={(e) => setNewProvider({ ...newProvider, usePromptCache: e.target.checked })}
-                    className="w-4 h-4 text-primary-600 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 dark:focus:ring-primary-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                  />
-                  <label htmlFor="newUsePromptCache" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Use Prompt Caching
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Models
                   </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      const newModelId = prompt('Enter new model ID:');
+                      if (newModelId && !newProvider.models[newModelId]) {
+                        setNewProvider({
+                          ...newProvider,
+                          models: {
+                            ...newProvider.models,
+                            [newModelId]: { name: newModelId }
+                          }
+                        });
+                      }
+                    }}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Model
+                  </Button>
                 </div>
-              )}
+                
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {Object.entries(newProvider.models).map(([modelId, modelConfig]) => (
+                    <div key={modelId} className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-xs font-mono bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-700 dark:text-slate-300">
+                          {modelId}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Remove this model?')) {
+                              const newModels = { ...newProvider.models };
+                              delete newModels[modelId];
+                              setNewProvider({ ...newProvider, models: newModels });
+                            }
+                          }}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Display Name</label>
+                        <input
+                          type="text"
+                          value={modelConfig.name || ''}
+                          onChange={(e) => {
+                            setNewProvider({
+                              ...newProvider,
+                              models: {
+                                ...newProvider.models,
+                                [modelId]: { ...modelConfig, name: e.target.value }
+                              }
+                            });
+                          }}
+                          className="w-full px-2 py-1 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded"
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`new-cache-${modelId}`}
+                          checked={!!modelConfig.usePromptCache}
+                          onChange={(e) => {
+                            setNewProvider({
+                              ...newProvider,
+                              models: {
+                                ...newProvider.models,
+                                [modelId]: { ...modelConfig, usePromptCache: e.target.checked }
+                              }
+                            });
+                          }}
+                          className="w-3 h-3 text-primary-600"
+                        />
+                        <label htmlFor={`new-cache-${modelId}`} className="text-xs text-slate-600 dark:text-slate-400">
+                          Prompt Cache
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                  {Object.keys(newProvider.models).length === 0 && (
+                    <p className="text-sm text-slate-500 italic text-center py-2">No models added yet.</p>
+                  )}
+                </div>
+              </div>
             </>
           )}
           <div>
@@ -922,32 +1033,98 @@ export function Providers() {
                   <option value="litellm">LiteLLM Proxy</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Model
-                </label>
-                <input
-                  type="text"
-                  value={editProvider.model}
-                  onChange={(e) => setEditProvider({ ...editProvider, model: e.target.value })}
-                  placeholder="e.g. gpt-4o"
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-slate-900 dark:text-white"
-                />
-              </div>
-              {editProvider.providerType === 'litellm' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="editUsePromptCache"
-                    checked={editProvider.usePromptCache}
-                    onChange={(e) => setEditProvider({ ...editProvider, usePromptCache: e.target.checked })}
-                    className="w-4 h-4 text-primary-600 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 dark:focus:ring-primary-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
-                  />
-                  <label htmlFor="editUsePromptCache" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Use Prompt Caching
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Models
                   </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      const newModelId = prompt('Enter new model ID:');
+                      if (newModelId && !editProvider.models[newModelId]) {
+                        setEditProvider({
+                          ...editProvider,
+                          models: {
+                            ...editProvider.models,
+                            [newModelId]: { name: newModelId }
+                          }
+                        });
+                      }
+                    }}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Model
+                  </Button>
                 </div>
-              )}
+                
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {Object.entries(editProvider.models).map(([modelId, modelConfig]) => (
+                    <div key={modelId} className="p-3 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-xs font-mono bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-700 dark:text-slate-300">
+                          {modelId}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Remove this model?')) {
+                              const newModels = { ...editProvider.models };
+                              delete newModels[modelId];
+                              setEditProvider({ ...editProvider, models: newModels });
+                            }
+                          }}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Display Name</label>
+                        <input
+                          type="text"
+                          value={modelConfig.name || ''}
+                          onChange={(e) => {
+                            setEditProvider({
+                              ...editProvider,
+                              models: {
+                                ...editProvider.models,
+                                [modelId]: { ...modelConfig, name: e.target.value }
+                              }
+                            });
+                          }}
+                          className="w-full px-2 py-1 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded"
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`cache-${modelId}`}
+                          checked={!!modelConfig.usePromptCache}
+                          onChange={(e) => {
+                            setEditProvider({
+                              ...editProvider,
+                              models: {
+                                ...editProvider.models,
+                                [modelId]: { ...modelConfig, usePromptCache: e.target.checked }
+                              }
+                            });
+                          }}
+                          className="w-3 h-3 text-primary-600"
+                        />
+                        <label htmlFor={`cache-${modelId}`} className="text-xs text-slate-600 dark:text-slate-400">
+                          Prompt Cache
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                  {Object.keys(editProvider.models).length === 0 && (
+                    <p className="text-sm text-slate-500 italic text-center py-2">No models configured.</p>
+                  )}
+                </div>
+              </div>
             </>
           )}
           <div>
@@ -1093,6 +1270,55 @@ export function Providers() {
                 </>
               ) : (
                 duplicateTargetApp !== selectedApp ? 'Copy to App' : 'Duplicate'
+              )}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Config Editor Modal */}
+      <Modal
+        isOpen={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        title="Edit Kilocode Configuration"
+        size="2xl"
+      >
+        <form onSubmit={handleSaveConfig} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Configuration (JSONC)
+            </label>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+              Edit the raw configuration file. Comments are supported but stripped on save.
+            </p>
+            <textarea
+              value={configContent}
+              onChange={(e) => setConfigContent(e.target.value)}
+              rows={20}
+              className="w-full px-3 py-2 font-mono text-sm bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all resize-none text-slate-900 dark:text-white"
+              spellCheck={false}
+            />
+          </div>
+          
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowConfigModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSavingConfig}
+            >
+              {isSavingConfig ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Config'
               )}
             </Button>
           </div>

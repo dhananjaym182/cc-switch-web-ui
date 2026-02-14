@@ -185,6 +185,16 @@ export const providersApi = {
     const response = await api.post<ApiResponse<any>>('/providers/speedtest', { providerId, app });
     return unwrap(response);
   },
+
+  getKilocodeConfig: async (): Promise<string> => {
+    const response = await api.get<ApiResponse<string>>('/providers/kilocode/config');
+    return unwrap(response);
+  },
+
+  saveKilocodeConfig: async (content: string): Promise<void> => {
+    const response = await api.post<ApiResponse<void>>('/providers/kilocode/config', { content });
+    return unwrap(response);
+  },
 };
 
 // ============================================
