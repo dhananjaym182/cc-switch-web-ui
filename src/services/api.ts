@@ -144,9 +144,17 @@ export const providersApi = {
     return unwrap(response);
   },
 
-  switch: async (providerId: string): Promise<SwitchProviderResponse> => {
+  get: async (providerId: string, app?: string): Promise<Provider> => {
+    const params = new URLSearchParams();
+    if (app) params.append('app', app);
+    const response = await api.get<ApiResponse<Provider>>(`/providers/${providerId}?${params.toString()}`);
+    return unwrap(response);
+  },
+
+  switch: async (providerId: string, app?: string): Promise<SwitchProviderResponse> => {
     const response = await api.post<ApiResponse<SwitchProviderResponse>>('/providers/switch', {
       providerId,
+      app,
     } as SwitchProviderRequest);
     return unwrap(response);
   },
@@ -168,8 +176,8 @@ export const providersApi = {
     return unwrap(response);
   },
 
-  duplicate: async (providerId: string, newId: string, app?: string): Promise<any> => {
-    const response = await api.post<ApiResponse<any>>('/providers/duplicate', { providerId, newId, app });
+  duplicate: async (providerId: string, newId: string, app?: string, targetApp?: string): Promise<any> => {
+    const response = await api.post<ApiResponse<any>>('/providers/duplicate', { providerId, newId, app, targetApp });
     return unwrap(response);
   },
 

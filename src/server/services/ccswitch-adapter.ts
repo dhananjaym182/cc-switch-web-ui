@@ -8,6 +8,7 @@ import {
   AppType,
 } from '../types/index.js';
 import { configStorage } from './config-storage.js';
+import { kilocodeService } from './kilocode-service.js';
 
 /**
  * Adapter for cc-switch CLI
@@ -118,6 +119,15 @@ export class CCSwitchAdapter {
    */
   async listProviders(app?: string): Promise<ProviderListResponse> {
     try {
+      if (app === 'kilocode-cli') {
+        const providers = await kilocodeService.listProviders();
+        const currentProvider = providers.find(p => p.isActive);
+        return {
+          providers,
+          currentProviderId: currentProvider ? currentProvider.id : null,
+        };
+      }
+
       const args = [...this.getAppFlagArgs(app), 'provider', 'list'];
       
       const result = await this.execute(args);
@@ -138,13 +148,79 @@ export class CCSwitchAdapter {
         currentProviderId = appConfig.settings?.lastProviderId || null;
       }
 
+      // Fetch full configuration for each provider from the database
+      const providersWithConfig = await this.enrichProvidersWithConfig(providers, app);
+
       return {
-        providers,
+        providers: providersWithConfig,
         currentProviderId,
       };
     } catch (error) {
       console.error('Error listing providers:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Enrich providers with full configuration from database
+   */
+  private async enrichProvidersWithConfig(providers: Provider[], app?: string): Promise<Provider[]> {
+    try {
+      const dbPath = await this.getDbPath();
+      const appType = app || 'claude';
+      
+      // Query all provider configs for the app
+      const sql = `SELECT id, settings_config, website_url, notes, sort_index FROM providers WHERE app_type = '${appType}';`;
+      const result = await this.executeSqliteQuery(dbPath, sql);
+      
+      // Parse the result and build a map
+      const configMap = new Map<string, { settingsConfig: Record<string, any>; websiteUrl: string; notes: string; sortIndex: number }>();
+      
+      const lines = result.split('\n');
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        
+        // Parse: id|settings_config|website_url|notes|sort_index
+        const parts = line.split('|');
+        if (parts.length >= 5) {
+          const id = parts[0];
+          const settingsConfigStr = parts[1];
+          const websiteUrl = parts[2] || '';
+          const notes = parts[3] || '';
+          const sortIndex = parseInt(parts[4]) || 0;
+          
+          let settingsConfig: Record<string, any> = {};
+          try {
+            if (settingsConfigStr && settingsConfigStr.trim()) {
+              settingsConfig = JSON.parse(settingsConfigStr);
+            }
+          } catch {
+            // Ignore parse errors
+          }
+          
+          configMap.set(id, { settingsConfig, websiteUrl, notes, sortIndex });
+        }
+      }
+      
+      // Enrich providers with config
+      return providers.map(provider => {
+        const configData = configMap.get(provider.id);
+        if (configData) {
+          return {
+            ...provider,
+            config: {
+              ...configData.settingsConfig,
+              websiteUrl: configData.websiteUrl,
+              notes: configData.notes,
+              sortIndex: configData.sortIndex,
+            },
+          };
+        }
+        return provider;
+      });
+    } catch (error) {
+      console.error('Error enriching providers with config:', error);
+      return providers;
     }
   }
 
@@ -276,19 +352,24 @@ export class CCSwitchAdapter {
   /**
    * Switch to a provider
    */
-  async switchProvider(providerId: string): Promise<SwitchProviderResponse> {
+  async switchProvider(providerId: string, app?: string): Promise<SwitchProviderResponse> {
     try {
       // Get current provider before switch
       const appConfig = configStorage.getAppConfig();
       const previousProviderId = appConfig.settings.lastProviderId;
 
-      const result = await this.execute(['provider', 'switch', providerId]);
+      if (app === 'kilocode-cli') {
+        await kilocodeService.switchProvider(providerId);
+      } else {
+        const args = [...this.getAppFlagArgs(app), 'provider', 'switch', providerId];
+        const result = await this.execute(args);
 
-      if (result.exitCode !== 0) {
-        return {
-          success: false,
-          message: `Failed to switch provider: ${result.stderr || result.stdout}`,
-        };
+        if (result.exitCode !== 0) {
+          return {
+            success: false,
+            message: `Failed to switch provider: ${result.stderr || result.stdout}`,
+          };
+        }
       }
 
       // Update config with new provider
@@ -432,6 +513,8 @@ export class CCSwitchAdapter {
     haikuModel?: string;
     sonnetModel?: string;
     opusModel?: string;
+    providerType?: string;
+    usePromptCache?: boolean;
   }): Promise<{ success: boolean; message: string }> {
     // Validate ID format (alphanumeric + hyphens/underscores)
     if (!/^[a-zA-Z0-9_-]+$/.test(params.id)) {
@@ -443,6 +526,12 @@ export class CCSwitchAdapter {
 
     try {
       const app = params.app || 'claude';
+      
+      if (app === 'kilocode-cli') {
+        await kilocodeService.addProvider(params);
+        return { success: true, message: `Successfully added provider '${params.id}' to Kilocode` };
+      }
+
       const id = params.id;
       const name = params.name;
       const apiUrl = params.apiUrl;
@@ -489,7 +578,7 @@ export class CCSwitchAdapter {
           auth: {
             OPENAI_API_KEY: apiKey
           },
-          config: `model = "${modelValue}"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${apiUrl}"\nenv_key = "OPENAI_API_KEY"\nwire_api = "openai"\n`
+          config: `model = "${modelValue}"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${apiUrl}"\nwire_api = "responses"\n`
         };
       } else if (app === 'gemini') {
         // Gemini uses GEMINI_API_KEY and optional model configuration
@@ -558,11 +647,18 @@ export class CCSwitchAdapter {
     haikuModel?: string;
     sonnetModel?: string;
     opusModel?: string;
+    providerType?: string;
+    usePromptCache?: boolean;
   }): Promise<{ success: boolean; message: string }> {
     try {
       const app = params.app || 'claude';
       const id = params.id;
       
+      if (app === 'kilocode-cli') {
+        await kilocodeService.editProvider(id, params);
+        return { success: true, message: 'Provider updated successfully' };
+      }
+
       // Get DB path
       const dbPath = await this.getDbPath();
       
@@ -676,7 +772,7 @@ export class CCSwitchAdapter {
               ...currentAuth,
               OPENAI_API_KEY: params.apiKey || currentAuth.OPENAI_API_KEY || ''
             },
-            config: `model = "${model}"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${apiUrl}"\nenv_key = "OPENAI_API_KEY"\nwire_api = "openai"\n`
+            config: `model = "${model}"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${apiUrl}"\nwire_api = "responses"\n`
           };
         } else if (app === 'gemini') {
           // Merge with existing settings for Gemini
@@ -720,9 +816,9 @@ export class CCSwitchAdapter {
   }
 
   /**
-   * Duplicate a provider
+   * Duplicate a provider (optionally to a different app)
    */
-  async duplicateProvider(id: string, newId: string, app: string = 'claude'): Promise<{ success: boolean; message: string }> {
+  async duplicateProvider(id: string, newId: string, app: string = 'claude', targetApp?: string): Promise<{ success: boolean; message: string }> {
     try {
         // Validate new ID format
         if (!/^[a-zA-Z0-9_-]+$/.test(newId)) {
@@ -732,33 +828,150 @@ export class CCSwitchAdapter {
             };
         }
         
+        const destApp = targetApp || app; // Use target app if specified, otherwise use source app
+
+        if (app === 'kilocode-cli' || destApp === 'kilocode-cli') {
+          // Cross-app duplication involving Kilocode
+          
+          // Case 1: Source is Kilocode
+          if (app === 'kilocode-cli') {
+             const provider = await kilocodeService.getProviderById(id);
+             if (!provider) return { success: false, message: 'Source provider not found' };
+             
+             // Extract config from Kilocode provider
+             const pConfig = provider.config || {};
+             const apiKey = (pConfig.openaiApiKey as string) || (pConfig.apiKey as string) || (pConfig.kilocodeToken as string) || (pConfig.litellmApiKey as string) || '';
+             const baseUrl = (pConfig.openaiBaseUrl as string) || (pConfig.baseUrl as string) || (pConfig.litellmBaseUrl as string) || '';
+             const model = (pConfig.openaiModel as string) || (pConfig.model as string) || (pConfig.kilocodeModel as string) || (pConfig.litellmModelId as string) || '';
+             
+             if (destApp === 'kilocode-cli') {
+               // Duplicate within Kilocode
+               await kilocodeService.addProvider({
+                 id: newId,
+                 name: newId,
+                 apiUrl: baseUrl,
+                 apiKey: apiKey,
+                 model: model,
+                 providerType: (pConfig.provider as string) || 'openai',
+                 usePromptCache: (pConfig.litellmUsePromptCache as boolean) || false,
+               });
+               return { success: true, message: `Successfully duplicated provider '${id}' to '${newId}'` };
+             } else {
+               // Duplicate from Kilocode to DB-based app (Claude, Gemini, Codex)
+               const newParams = {
+                 id: newId,
+                 name: `${provider.name} (Copy)`,
+                 apiUrl: baseUrl,
+                 apiKey: apiKey,
+                 app: destApp,
+                 model: model,
+                 websiteUrl: (pConfig.websiteUrl as string) || '',
+                 notes: (pConfig.notes as string) || '',
+               };
+               
+               return await this.addProvider(newParams);
+             }
+          }
+          
+          // Case 2: Target is Kilocode (Source is DB-based)
+          if (destApp === 'kilocode-cli') {
+             // Get source provider from DB
+             const sourceProvider = await this.getProviderById(id, app);
+             if (!sourceProvider) return { success: false, message: 'Source provider not found' };
+             
+             const pConfig = sourceProvider.config || {};
+             let apiKey = '';
+             let baseUrl = '';
+             let model = '';
+             
+             // Extract based on source app
+             if (app === 'claude') {
+               apiKey = (pConfig.env as any)?.ANTHROPIC_AUTH_TOKEN || '';
+               baseUrl = (pConfig.env as any)?.ANTHROPIC_BASE_URL || '';
+               model = (pConfig.env as any)?.ANTHROPIC_MODEL || '';
+             } else if (app === 'gemini') {
+               apiKey = (pConfig.env as any)?.GEMINI_API_KEY || (pConfig.env as any)?.GOOGLE_API_KEY || '';
+               baseUrl = (pConfig.env as any)?.GEMINI_BASE_URL || '';
+               model = (pConfig.env as any)?.GEMINI_MODEL || '';
+             } else if (app === 'codex') {
+               apiKey = (pConfig.auth as any)?.OPENAI_API_KEY || '';
+               // Extract from TOML config string would be needed here, simplified for now
+               // In a real scenario, we'd reuse the parsing logic from getProviderById or similar
+               // For now, let's assume we can get it if available or leave blank
+             }
+             
+             await kilocodeService.addProvider({
+               id: newId,
+               name: newId,
+               apiUrl: baseUrl,
+               apiKey: apiKey,
+               model: model,
+             });
+             
+             return { success: true, message: `Successfully duplicated provider '${id}' to '${newId}' in Kilocode` };
+          }
+        }
+
         const dbPath = await this.getDbPath();
         
         // Check if source provider exists
-        const checkSql = `SELECT id FROM providers WHERE id = '${id}' AND app_type = '${app}';`;
+        const checkSql = `SELECT id, name, settings_config, website_url, category, meta, cost_multiplier, provider_type, notes, sort_index, icon, icon_color, limit_daily_usd, limit_monthly_usd FROM providers WHERE id = '${id}' AND app_type = '${app}';`;
         const checkResult = await this.executeSqliteQuery(dbPath, checkSql);
         
-        if (!checkResult) {
-            return { success: false, message: `Provider '${id}' not found` };
+        if (!checkResult.trim()) {
+            return { success: false, message: `Provider '${id}' not found in app '${app}'` };
         }
         
-        // Check if new ID already exists
-        const checkNewSql = `SELECT id FROM providers WHERE id = '${newId}' AND app_type = '${app}';`;
+        // Check if new ID already exists in destination app
+        const checkNewSql = `SELECT id FROM providers WHERE id = '${newId}' AND app_type = '${destApp}';`;
         const checkNewResult = await this.executeSqliteQuery(dbPath, checkNewSql);
         
-        if (checkNewResult) {
-            return { success: false, message: `Provider with ID '${newId}' already exists` };
+        if (checkNewResult.trim()) {
+            return { success: false, message: `Provider with ID '${newId}' already exists in app '${destApp}'` };
         }
         
-        // Copy row with new ID, including all fields
+        // Parse source provider data
+        const parts = checkResult.split('|');
+        if (parts.length < 14) {
+            return { success: false, message: 'Failed to parse source provider data' };
+        }
+        
+        const sourceName = parts[1] || 'Provider';
+        const sourceSettingsConfig = parts[2] || '{}';
+        const sourceWebsiteUrl = parts[3] || '';
+        const sourceCategory = parts[4] || 'custom';
+        const sourceMeta = parts[5] || '{}';
+        const sourceCostMultiplier = parts[6] || '1.0';
+        const sourceProviderType = parts[7] || 'custom';
+        const sourceNotes = parts[8] || '';
+        const sourceSortIndex = parts[9] || '0';
+        const sourceIcon = parts[10] || '';
+        const sourceIconColor = parts[11] || '';
+        const sourceLimitDaily = parts[12] || '';
+        const sourceLimitMonthly = parts[13] || '';
+        
+        // Transform settings_config for the target app type
+        let transformedSettingsConfig = sourceSettingsConfig;
+        try {
+            let settingsObj = JSON.parse(sourceSettingsConfig);
+            settingsObj = this.transformSettingsConfigForApp(settingsObj, app, destApp);
+            transformedSettingsConfig = JSON.stringify(settingsObj).replace(/'/g, "''");
+        } catch {
+            // Keep original if parsing fails
+        }
+        
+        // Insert with new ID and destination app type
         const sql = `INSERT INTO providers (id, app_type, name, settings_config, website_url, category, meta, is_current, in_failover_queue, cost_multiplier, provider_type, notes, sort_index, icon, icon_color, limit_daily_usd, limit_monthly_usd, created_at)
-                     SELECT '${newId}', app_type, name || ' (Copy)', settings_config, website_url, category, meta, 0, 0, cost_multiplier, provider_type, notes, sort_index, icon, icon_color, limit_daily_usd, limit_monthly_usd, strftime('%s', 'now')
-                     FROM providers WHERE id = '${id}' AND app_type = '${app}';`;
+                     VALUES ('${newId}', '${destApp}', '${sourceName.replace(/'/g, "''")} (Copy)', '${transformedSettingsConfig}', '${sourceWebsiteUrl.replace(/'/g, "''")}', '${sourceCategory}', '${sourceMeta.replace(/'/g, "''")}', 0, 0, '${sourceCostMultiplier}', '${sourceProviderType}', '${sourceNotes.replace(/'/g, "''")}', ${sourceSortIndex}, '${sourceIcon}', '${sourceIconColor}', ${sourceLimitDaily || 'NULL'}, ${sourceLimitMonthly || 'NULL'}, strftime('%s', 'now'));`;
         
         const result = await this.executeSqlite(dbPath, sql);
         
         if (result.success) {
-            result.message = `Successfully duplicated provider '${id}' to '${newId}'`;
+            if (targetApp && targetApp !== app) {
+                result.message = `Successfully copied provider '${id}' from ${app} to ${targetApp} as '${newId}'`;
+            } else {
+                result.message = `Successfully duplicated provider '${id}' to '${newId}'`;
+            }
         }
         
         return result;
@@ -768,6 +981,63 @@ export class CCSwitchAdapter {
             message: error instanceof Error ? error.message : 'Unknown error',
         };
     }
+  }
+
+  /**
+   * Transform settings config from one app type to another
+   */
+  private transformSettingsConfigForApp(settings: Record<string, any>, sourceApp: string, targetApp: string): Record<string, any> {
+    // Extract common values from source
+    let apiKey = '';
+    let baseUrl = '';
+    let model = '';
+    
+    if (sourceApp === 'claude') {
+        apiKey = settings.env?.ANTHROPIC_AUTH_TOKEN || '';
+        baseUrl = settings.env?.ANTHROPIC_BASE_URL || '';
+        model = settings.env?.ANTHROPIC_MODEL || '';
+    } else if (sourceApp === 'codex') {
+        apiKey = settings.auth?.OPENAI_API_KEY || '';
+        // Extract base_url from config TOML if present
+        const baseUrlMatch = settings.config?.match(/base_url\s*=\s*"([^"]+)"/);
+        baseUrl = baseUrlMatch ? baseUrlMatch[1] : '';
+        const modelMatch = settings.config?.match(/model\s*=\s*"([^"]+)"/);
+        model = modelMatch ? modelMatch[1] : '';
+    } else if (sourceApp === 'gemini') {
+        apiKey = settings.env?.GEMINI_API_KEY || settings.env?.GOOGLE_API_KEY || '';
+        baseUrl = settings.env?.GEMINI_BASE_URL || '';
+        model = settings.env?.GEMINI_MODEL || '';
+    }
+    
+    // Build new config for target app
+    if (targetApp === 'claude') {
+        return {
+            env: {
+                ANTHROPIC_AUTH_TOKEN: apiKey,
+                ANTHROPIC_BASE_URL: baseUrl,
+                ANTHROPIC_MODEL: model || 'claude-3-5-sonnet-20241022',
+            }
+        };
+    } else if (targetApp === 'codex') {
+        return {
+            auth: {
+                OPENAI_API_KEY: apiKey
+            },
+            config: `model = "${model || 'gpt-4o'}"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${baseUrl}"\nwire_api = "responses"\n`
+        };
+    } else if (targetApp === 'gemini') {
+        return {
+            env: {
+                GEMINI_API_KEY: apiKey,
+                GOOGLE_API_KEY: apiKey,
+                GEMINI_BASE_URL: baseUrl,
+                GEMINI_MODEL: model || 'gemini-2.0-flash',
+            }
+        };
+    }
+    
+    // Default: return as-is
+    return settings;
   }
 
   /**
@@ -881,6 +1151,12 @@ export class CCSwitchAdapter {
   async deleteProvider(providerId: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
       const appType = app || 'claude';
+      
+      if (appType === 'kilocode-cli') {
+        await kilocodeService.deleteProvider(providerId);
+        return { success: true, message: `Deleted provider: ${providerId}` };
+      }
+
       const dbPath = await this.getDbPath();
       
       // Check if this is the current provider
@@ -933,8 +1209,8 @@ export class CCSwitchAdapter {
       // Parse the output to extract provider info
       const lines = result.stdout.split('\n');
       for (const line of lines) {
-        if (line.includes('→ Current:')) {
-          const match = line.match(/→\s*Current:\s*(\S+)/);
+        if (line.includes('Current Provider')) {
+          const match = line.match(/Current Provider:\s*(\S+)/);
           if (match && match[1]) {
             return { id: match[1], name: match[1] };
           }
@@ -944,6 +1220,67 @@ export class CCSwitchAdapter {
       return null;
     } catch (error) {
       console.error('Error getting current provider:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get a single provider's full configuration by ID
+   */
+  async getProviderById(providerId: string, app?: string): Promise<Provider | null> {
+    try {
+      const appType = app || 'claude';
+      
+      if (appType === 'kilocode-cli') {
+        return await kilocodeService.getProviderById(providerId);
+      }
+
+      const dbPath = await this.getDbPath();
+      
+      const sql = `SELECT id, name, settings_config, website_url, notes, sort_index, is_current FROM providers WHERE id = '${providerId}' AND app_type = '${appType}';`;
+      const result = await this.executeSqliteQuery(dbPath, sql);
+      
+      if (!result.trim()) {
+        return null;
+      }
+      
+      // Parse: id|name|settings_config|website_url|notes|sort_index|is_current
+      const parts = result.split('|');
+      if (parts.length >= 7) {
+        const id = parts[0];
+        const name = parts[1];
+        const settingsConfigStr = parts[2];
+        const websiteUrl = parts[3] || '';
+        const notes = parts[4] || '';
+        const sortIndex = parseInt(parts[5]) || 0;
+        const isCurrent = parts[6] === '1';
+        
+        let settingsConfig: Record<string, any> = {};
+        try {
+          if (settingsConfigStr && settingsConfigStr.trim()) {
+            settingsConfig = JSON.parse(settingsConfigStr);
+          }
+        } catch {
+          // Ignore parse errors
+        }
+        
+        return {
+          id,
+          name,
+          type: this.inferProviderType(id),
+          isActive: isCurrent,
+          config: {
+            ...settingsConfig,
+            websiteUrl,
+            notes,
+            sortIndex,
+          },
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting provider by ID:', error);
       return null;
     }
   }

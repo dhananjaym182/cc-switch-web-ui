@@ -34,7 +34,9 @@ export function Providers() {
     model: '',
     haikuModel: '',
     sonnetModel: '',
-    opusModel: ''
+    opusModel: '',
+    providerType: 'openai',
+    usePromptCache: false
   });
   const [editProvider, setEditProvider] = useState({
     id: '',
@@ -47,7 +49,9 @@ export function Providers() {
     model: '',
     haikuModel: '',
     sonnetModel: '',
-    opusModel: ''
+    opusModel: '',
+    providerType: 'openai',
+    usePromptCache: false
   });
   
   // Speedtest state
@@ -58,6 +62,7 @@ export function Providers() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateProvider, setDuplicateProvider] = useState<Provider | null>(null);
   const [duplicateNewId, setDuplicateNewId] = useState('');
+  const [duplicateTargetApp, setDuplicateTargetApp] = useState<string>('');
   const [isDuplicating, setIsDuplicating] = useState(false);
 
   const fetchProviders = async () => {
@@ -101,7 +106,7 @@ export function Providers() {
     setSwitchingId(providerId);
     setError(null);
     try {
-      const response = await providersApi.switch(providerId);
+      const response = await providersApi.switch(providerId, selectedApp);
       if (response.success) {
         setCurrentProviderId(providerId);
         setProviders(
@@ -149,7 +154,7 @@ export function Providers() {
     try {
       await providersApi.add(newProvider, selectedApp);
       setShowAddModal(false);
-      setNewProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '' });
+      setNewProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '', providerType: 'openai', usePromptCache: false });
       await fetchProviders();
       setSuccess('Provider added successfully');
     } catch (err) {
@@ -159,30 +164,138 @@ export function Providers() {
     }
   };
 
-  const openEditModal = (provider: Provider) => {
-    // Extract API URL from config if available
-    const apiUrl = (provider.config?.apiUrl as string) || (provider.config?.baseUrl as string) || '';
-    const apiKey = (provider.config?.apiKey as string) || '';
-    const app = (provider.config?.app as string) || 'claude';
-    const websiteUrl = (provider.config?.websiteUrl as string) || '';
-    const notes = (provider.config?.notes as string) || '';
-    const model = (provider.config?.model as string) || '';
-    const haikuModel = (provider.config?.haikuModel as string) || '';
-    const sonnetModel = (provider.config?.sonnetModel as string) || '';
-    const opusModel = (provider.config?.opusModel as string) || '';
-    setEditProvider({
-      id: provider.id,
-      name: provider.name,
-      apiUrl,
-      apiKey,
-      app,
-      websiteUrl,
-      notes,
-      model,
-      haikuModel,
-      sonnetModel,
-      opusModel
-    });
+  const openEditModal = async (provider: Provider) => {
+    // Fetch full provider data from API to ensure we have all config
+    try {
+      const fullProvider = await providersApi.get(provider.id, selectedApp);
+      
+      // Extract config from the provider's settings_config (stored in config.env for most apps)
+      const config = fullProvider.config || {};
+      const env = (config.env as Record<string, string>) || {};
+      
+      // Determine app type from config or use selectedApp
+      const app = (config.app as string) || selectedApp;
+      
+      // Extract values based on app type
+      let apiUrl = '';
+      let apiKey = '';
+      let model = '';
+      let haikuModel = '';
+      let sonnetModel = '';
+      let opusModel = '';
+      
+      if (app === 'claude') {
+        apiUrl = env.ANTHROPIC_BASE_URL || '';
+        apiKey = env.ANTHROPIC_AUTH_TOKEN || '';
+        model = env.ANTHROPIC_MODEL || '';
+        haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || '';
+        sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL || '';
+        opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL || '';
+      } else if (app === 'gemini') {
+        apiUrl = env.GEMINI_BASE_URL || '';
+        apiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
+        model = env.GEMINI_MODEL || '';
+      } else if (app === 'codex') {
+        // For codex, extract from auth and config
+        const auth = (config.auth as Record<string, string>) || {};
+        apiKey = auth.OPENAI_API_KEY || '';
+        // Parse config TOML for base_url and model
+        const configStr = (config.config as string) || '';
+        const baseUrlMatch = configStr.match(/base_url\s*=\s*["']([^"']+)["']/);
+        const modelMatch = configStr.match(/model\s*=\\s*["']([^"']+)["']/);
+        apiUrl = baseUrlMatch ? baseUrlMatch[1] : '';
+        model = modelMatch ? modelMatch[1] : '';
+      } else if (app === 'kilocode-cli') {
+        if (config.provider === 'kilocode') {
+          apiKey = (config.kilocodeToken as string) || '';
+          model = (config.kilocodeModel as string) || '';
+        } else if (config.provider === 'litellm') {
+          apiKey = (config.litellmApiKey as string) || '';
+          model = (config.litellmModelId as string) || '';
+          apiUrl = (config.litellmBaseUrl as string) || '';
+        } else {
+          apiKey = (config.openaiApiKey as string) || '';
+          model = (config.openaiModel as string) || '';
+          apiUrl = (config.openaiBaseUrl as string) || '';
+        }
+      }
+      
+      const websiteUrl = (config.websiteUrl as string) || '';
+      const notes = (config.notes as string) || '';
+      
+      setEditProvider({
+        id: fullProvider.id,
+        name: fullProvider.name,
+        apiUrl,
+        apiKey,
+        app,
+        websiteUrl,
+        notes,
+        model,
+        haikuModel,
+        sonnetModel,
+        opusModel,
+        providerType: (config.provider as string) || 'openai',
+        usePromptCache: (config.litellmUsePromptCache as boolean) || false
+      });
+    } catch (err) {
+      console.error('Failed to fetch provider details:', err);
+      // Fallback to using the provider data we have
+      const config = provider.config || {};
+      const env = (config.env as Record<string, string>) || {};
+      const app = selectedApp;
+      
+      let apiUrl = '';
+      let apiKey = '';
+      let model = '';
+      let haikuModel = '';
+      let sonnetModel = '';
+      let opusModel = '';
+      
+      if (app === 'claude') {
+        apiUrl = env.ANTHROPIC_BASE_URL || '';
+        apiKey = env.ANTHROPIC_AUTH_TOKEN || '';
+        model = env.ANTHROPIC_MODEL || '';
+        haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || '';
+        sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL || '';
+        opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL || '';
+      } else if (app === 'gemini') {
+        apiUrl = env.GEMINI_BASE_URL || '';
+        apiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
+        model = env.GEMINI_MODEL || '';
+      } else if (app === 'kilocode-cli') {
+        // Fallback logic for kilocode if API fetch failed (though we usually rely on API fetch)
+        // This part might be less critical if API fetch succeeds
+        if (config.provider === 'kilocode') {
+          apiKey = (config.kilocodeToken as string) || '';
+          model = (config.kilocodeModel as string) || '';
+        } else if (config.provider === 'litellm') {
+          apiKey = (config.litellmApiKey as string) || '';
+          model = (config.litellmModelId as string) || '';
+          apiUrl = (config.litellmBaseUrl as string) || '';
+        } else {
+          apiKey = (config.openaiApiKey as string) || '';
+          model = (config.openaiModel as string) || '';
+          apiUrl = (config.openaiBaseUrl as string) || '';
+        }
+      }
+      
+      setEditProvider({
+        id: provider.id,
+        name: provider.name,
+        apiUrl,
+        apiKey,
+        app,
+        websiteUrl: (config.websiteUrl as string) || '',
+        notes: (config.notes as string) || '',
+        model,
+        haikuModel,
+        sonnetModel,
+        opusModel,
+        providerType: (config.provider as string) || 'openai',
+        usePromptCache: (config.litellmUsePromptCache as boolean) || false
+      });
+    }
     setShowEditModal(true);
   };
 
@@ -195,7 +308,7 @@ export function Providers() {
     try {
       await providersApi.edit(editProvider, selectedApp);
       setShowEditModal(false);
-      setEditProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '' });
+      setEditProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '', providerType: 'openai', usePromptCache: false });
       await fetchProviders();
       setSuccess('Provider updated successfully');
     } catch (err) {
@@ -242,6 +355,7 @@ export function Providers() {
   const openDuplicateModal = (provider: Provider) => {
     setDuplicateProvider(provider);
     setDuplicateNewId(`${provider.id}-copy`);
+    setDuplicateTargetApp(selectedApp); // Default to current app
     setShowDuplicateModal(true);
   };
 
@@ -252,12 +366,24 @@ export function Providers() {
     setIsDuplicating(true);
     setError(null);
     try {
-      await providersApi.duplicate(duplicateProvider.id, duplicateNewId, selectedApp);
+      await providersApi.duplicate(
+        duplicateProvider.id, 
+        duplicateNewId, 
+        selectedApp, 
+        duplicateTargetApp !== selectedApp ? duplicateTargetApp : undefined
+      );
       setShowDuplicateModal(false);
       setDuplicateProvider(null);
       setDuplicateNewId('');
+      setDuplicateTargetApp('');
       await fetchProviders();
-      setSuccess('Provider duplicated successfully');
+      
+      // Show appropriate success message
+      if (duplicateTargetApp !== selectedApp) {
+        setSuccess(`Provider copied to ${duplicateTargetApp} successfully`);
+      } else {
+        setSuccess('Provider duplicated successfully');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to duplicate provider');
     } finally {
@@ -422,6 +548,7 @@ export function Providers() {
               <option value="claude">Claude</option>
               <option value="codex">Codex</option>
               <option value="gemini">Gemini</option>
+              <option value="kilocode-cli">Kilocode CLI</option>
             </select>
           </div>
           <div>
@@ -529,6 +656,49 @@ export function Providers() {
               />
             </div>
           )}
+          {newProvider.app === 'kilocode-cli' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Provider Type
+                </label>
+                <select
+                  value={newProvider.providerType}
+                  onChange={(e) => setNewProvider({ ...newProvider, providerType: e.target.value })}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-slate-900 dark:text-white"
+                >
+                  <option value="openai">OpenAI Compatible (Default)</option>
+                  <option value="litellm">LiteLLM Proxy</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Model
+                </label>
+                <input
+                  type="text"
+                  value={newProvider.model}
+                  onChange={(e) => setNewProvider({ ...newProvider, model: e.target.value })}
+                  placeholder="e.g. gpt-4o"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-slate-900 dark:text-white"
+                />
+              </div>
+              {newProvider.providerType === 'litellm' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="newUsePromptCache"
+                    checked={newProvider.usePromptCache}
+                    onChange={(e) => setNewProvider({ ...newProvider, usePromptCache: e.target.checked })}
+                    className="w-4 h-4 text-primary-600 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 dark:focus:ring-primary-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                  />
+                  <label htmlFor="newUsePromptCache" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Use Prompt Caching
+                  </label>
+                </div>
+              )}
+            </>
+          )}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Website URL (Optional)
@@ -627,6 +797,7 @@ export function Providers() {
               <option value="claude">Claude</option>
               <option value="codex">Codex</option>
               <option value="gemini">Gemini</option>
+              <option value="kilocode-cli">Kilocode CLI</option>
             </select>
           </div>
           <div>
@@ -736,6 +907,49 @@ export function Providers() {
               />
             </div>
           )}
+          {editProvider.app === 'kilocode-cli' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Provider Type
+                </label>
+                <select
+                  value={editProvider.providerType}
+                  onChange={(e) => setEditProvider({ ...editProvider, providerType: e.target.value })}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-slate-900 dark:text-white"
+                >
+                  <option value="openai">OpenAI Compatible (Default)</option>
+                  <option value="litellm">LiteLLM Proxy</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Model
+                </label>
+                <input
+                  type="text"
+                  value={editProvider.model}
+                  onChange={(e) => setEditProvider({ ...editProvider, model: e.target.value })}
+                  placeholder="e.g. gpt-4o"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-slate-900 dark:text-white"
+                />
+              </div>
+              {editProvider.providerType === 'litellm' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="editUsePromptCache"
+                    checked={editProvider.usePromptCache}
+                    onChange={(e) => setEditProvider({ ...editProvider, usePromptCache: e.target.checked })}
+                    className="w-4 h-4 text-primary-600 bg-gray-100 border-gray-300 rounded focus:ring-primary-500 dark:focus:ring-primary-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                  />
+                  <label htmlFor="editUsePromptCache" className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Use Prompt Caching
+                  </label>
+                </div>
+              )}
+            </>
+          )}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
               Website URL
@@ -795,6 +1009,7 @@ export function Providers() {
           setShowDuplicateModal(false);
           setDuplicateProvider(null);
           setDuplicateNewId('');
+          setDuplicateTargetApp('');
         }}
         title="Duplicate Provider"
         size="lg"
@@ -807,9 +1022,12 @@ export function Providers() {
             <input
               type="text"
               disabled
-              value={duplicateProvider?.name || ''}
+              value={duplicateProvider ? `${duplicateProvider.name} (${duplicateProvider.id})` : ''}
               className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 cursor-not-allowed"
             />
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              From app: <span className="font-medium">{selectedApp}</span>
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -827,6 +1045,29 @@ export function Providers() {
               Enter a unique ID for the duplicated provider
             </p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Target Application
+            </label>
+            <select
+              value={duplicateTargetApp}
+              onChange={(e) => setDuplicateTargetApp(e.target.value)}
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all text-slate-900 dark:text-white"
+            >
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="gemini">Gemini</option>
+            </select>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {duplicateTargetApp !== selectedApp ? (
+                <span className="text-amber-600 dark:text-amber-400">
+                  Will copy to {duplicateTargetApp} with transformed config (API key, base URL, and models will be adapted)
+                </span>
+              ) : (
+                'Duplicate within the same app'
+              )}
+            </p>
+          </div>
           
           <div className="flex justify-end gap-3 mt-6">
             <Button
@@ -836,6 +1077,7 @@ export function Providers() {
                 setShowDuplicateModal(false);
                 setDuplicateProvider(null);
                 setDuplicateNewId('');
+                setDuplicateTargetApp('');
               }}
             >
               Cancel
@@ -847,10 +1089,10 @@ export function Providers() {
               {isDuplicating ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Duplicating...
+                  {duplicateTargetApp !== selectedApp ? 'Copying...' : 'Duplicating...'}
                 </>
               ) : (
-                'Duplicate'
+                duplicateTargetApp !== selectedApp ? 'Copy to App' : 'Duplicate'
               )}
             </Button>
           </div>

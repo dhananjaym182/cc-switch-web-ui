@@ -34,12 +34,21 @@ router.get('/', async (req: Request, res: Response) => {
  * Add a new provider
  */
 router.post('/add', async (req: Request, res: Response) => {
-  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, haikuModel, sonnetModel, opusModel } = req.body;
+  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, haikuModel, sonnetModel, opusModel, providerType, usePromptCache } = req.body;
 
-  if (!id || !name || !apiUrl) {
+  if (!id || !name) {
     res.status(400).json({
       success: false,
-      error: 'id, name, and apiUrl are required',
+      error: 'id and name are required',
+    });
+    return;
+  }
+
+  // Allow empty apiUrl for kilocode as it might not be applicable
+  if (!apiUrl && app !== 'kilocode-cli') {
+    res.status(400).json({
+      success: false,
+      error: 'apiUrl is required',
     });
     return;
   }
@@ -58,6 +67,8 @@ router.post('/add', async (req: Request, res: Response) => {
       haikuModel,
       sonnetModel,
       opusModel,
+      providerType,
+      usePromptCache,
     });
 
     if (result.success) {
@@ -81,7 +92,7 @@ router.post('/add', async (req: Request, res: Response) => {
 });
 
 router.post('/switch', async (req: Request, res: Response) => {
-  const { providerId } = req.body;
+  const { providerId, app } = req.body;
 
   if (!providerId) {
     res.status(400).json({
@@ -92,7 +103,7 @@ router.post('/switch', async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await ccSwitchAdapter.switchProvider(providerId);
+    const result = await ccSwitchAdapter.switchProvider(providerId, app);
     
     if (result.success) {
       res.json({
@@ -144,11 +155,43 @@ router.get('/current', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/providers/:providerId
+ * Get a single provider by ID with full configuration
+ */
+router.get('/:providerId', async (req: Request, res: Response) => {
+  try {
+    const { providerId } = req.params;
+    const app = req.query.app as string | undefined;
+    
+    const provider = await ccSwitchAdapter.getProviderById(providerId, app);
+    
+    if (!provider) {
+      res.status(404).json({
+        success: false,
+        error: `Provider '${providerId}' not found`,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: provider,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to get provider';
+    res.status(500).json({
+      success: false,
+      error: message,
+    });
+  }
+});
+
+/**
  * POST /api/providers/edit
  * Edit an existing provider
  */
 router.post('/edit', async (req: Request, res: Response) => {
-  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, haikuModel, sonnetModel, opusModel } = req.body;
+  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, haikuModel, sonnetModel, opusModel, providerType, usePromptCache } = req.body;
 
   if (!id) {
     res.status(400).json({
@@ -172,6 +215,8 @@ router.post('/edit', async (req: Request, res: Response) => {
       haikuModel,
       sonnetModel,
       opusModel,
+      providerType,
+      usePromptCache,
     });
 
     if (result.success) {
@@ -196,10 +241,10 @@ router.post('/edit', async (req: Request, res: Response) => {
 
 /**
  * POST /api/providers/duplicate
- * Duplicate a provider
+ * Duplicate a provider (optionally to a different app)
  */
 router.post('/duplicate', async (req: Request, res: Response) => {
-  const { providerId, newId, app } = req.body;
+  const { providerId, newId, app, targetApp } = req.body;
 
   if (!providerId || !newId) {
     res.status(400).json({
@@ -210,7 +255,7 @@ router.post('/duplicate', async (req: Request, res: Response) => {
   }
 
   try {
-    const result = await ccSwitchAdapter.duplicateProvider(providerId, newId, app);
+    const result = await ccSwitchAdapter.duplicateProvider(providerId, newId, app, targetApp);
 
     if (result.success) {
       res.json({

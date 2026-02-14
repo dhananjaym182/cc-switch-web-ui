@@ -4,9 +4,11 @@ import { Card, CardHeader } from '../components/Card';
 import { StatusBadge } from '../components/StatusBadge';
 import { Button } from '../components/Button';
 import { statusApi, healthApi, providersApi } from '../services/api';
+import { useApp } from '../contexts/AppContext';
 import type { StatusResponse, HealthResponse, Provider } from '../types';
 
 export function Dashboard() {
+  const { selectedApp } = useApp();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -20,7 +22,7 @@ export function Dashboard() {
       const [statusRes, healthRes, providersRes] = await Promise.all([
         statusApi.get(),
         healthApi.check(),
-        providersApi.list(),
+        providersApi.list(selectedApp),
       ]);
       setStatus(statusRes);
       setHealth(healthRes);
@@ -34,11 +36,11 @@ export function Dashboard() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [selectedApp]);
 
   const handleSwitchProvider = async (providerId: string) => {
     try {
-      await providersApi.switch(providerId);
+      await providersApi.switch(providerId, selectedApp);
       fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to switch provider');
