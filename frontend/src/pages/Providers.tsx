@@ -28,14 +28,26 @@ export function Providers() {
     name: '',
     apiUrl: '',
     apiKey: '',
-    app: 'claude'
+    app: 'claude',
+    websiteUrl: '',
+    notes: '',
+    model: '',
+    haikuModel: '',
+    sonnetModel: '',
+    opusModel: ''
   });
   const [editProvider, setEditProvider] = useState({
     id: '',
     name: '',
     apiUrl: '',
     apiKey: '',
-    app: 'claude'
+    app: 'claude',
+    websiteUrl: '',
+    notes: '',
+    model: '',
+    haikuModel: '',
+    sonnetModel: '',
+    opusModel: ''
   });
   
   // Speedtest state
@@ -137,7 +149,7 @@ export function Providers() {
     try {
       await providersApi.add(newProvider, selectedApp);
       setShowAddModal(false);
-      setNewProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp });
+      setNewProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '' });
       await fetchProviders();
       setSuccess('Provider added successfully');
     } catch (err) {
@@ -152,26 +164,38 @@ export function Providers() {
     const apiUrl = (provider.config?.apiUrl as string) || (provider.config?.baseUrl as string) || '';
     const apiKey = (provider.config?.apiKey as string) || '';
     const app = (provider.config?.app as string) || 'claude';
+    const websiteUrl = (provider.config?.websiteUrl as string) || '';
+    const notes = (provider.config?.notes as string) || '';
+    const model = (provider.config?.model as string) || '';
+    const haikuModel = (provider.config?.haikuModel as string) || '';
+    const sonnetModel = (provider.config?.sonnetModel as string) || '';
+    const opusModel = (provider.config?.opusModel as string) || '';
     setEditProvider({
       id: provider.id,
       name: provider.name,
       apiUrl,
       apiKey,
-      app
+      app,
+      websiteUrl,
+      notes,
+      model,
+      haikuModel,
+      sonnetModel,
+      opusModel
     });
     setShowEditModal(true);
   };
 
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editProvider.id || !editProvider.name || !editProvider.apiUrl) return;
+    if (!editProvider.id) return;
 
     setIsEditing(true);
     setError(null);
     try {
       await providersApi.edit(editProvider, selectedApp);
       setShowEditModal(false);
-      setEditProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp });
+      setEditProvider({ id: '', name: '', apiUrl: '', apiKey: '', app: selectedApp, websiteUrl: '', notes: '', model: '', haikuModel: '', sonnetModel: '', opusModel: '' });
       await fetchProviders();
       setSuccess('Provider updated successfully');
     } catch (err) {
@@ -368,6 +392,9 @@ export function Providers() {
               placeholder="e.g., my-provider"
               className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
             />
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Unique identifier (alphanumeric, hyphens, underscores only)
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
@@ -411,7 +438,7 @@ export function Providers() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              API Key (Optional)
+              API Key
             </label>
             <input
               type="password"
@@ -419,6 +446,110 @@ export function Providers() {
               onChange={(e) => setNewProvider({ ...newProvider, apiKey: e.target.value })}
               placeholder="sk-..."
               className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+            />
+          </div>
+          {newProvider.app === 'codex' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Model
+              </label>
+              <input
+                type="text"
+                value={newProvider.model}
+                onChange={(e) => setNewProvider({ ...newProvider, model: e.target.value })}
+                placeholder="gpt-4o"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+              />
+            </div>
+          )}
+          {newProvider.app === 'claude' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Default Model
+                </label>
+                <input
+                  type="text"
+                  value={newProvider.model}
+                  onChange={(e) => setNewProvider({ ...newProvider, model: e.target.value })}
+                  placeholder="claude-3-5-sonnet-20241022"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Haiku Model (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={newProvider.haikuModel}
+                  onChange={(e) => setNewProvider({ ...newProvider, haikuModel: e.target.value })}
+                  placeholder="claude-3-5-haiku-20241022"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Sonnet Model (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={newProvider.sonnetModel}
+                  onChange={(e) => setNewProvider({ ...newProvider, sonnetModel: e.target.value })}
+                  placeholder="claude-3-5-sonnet-20241022"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Opus Model (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={newProvider.opusModel}
+                  onChange={(e) => setNewProvider({ ...newProvider, opusModel: e.target.value })}
+                  placeholder="claude-3-opus-20240229"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+                />
+              </div>
+            </>
+          )}
+          {newProvider.app === 'gemini' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Model
+              </label>
+              <input
+                type="text"
+                value={newProvider.model}
+                onChange={(e) => setNewProvider({ ...newProvider, model: e.target.value })}
+                placeholder="gemini-2.0-flash"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Website URL (Optional)
+            </label>
+            <input
+              type="text"
+              value={newProvider.websiteUrl}
+              onChange={(e) => setNewProvider({ ...newProvider, websiteUrl: e.target.value })}
+              placeholder="https://provider-website.com"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Notes (Optional)
+            </label>
+            <textarea
+              value={newProvider.notes}
+              onChange={(e) => setNewProvider({ ...newProvider, notes: e.target.value })}
+              placeholder="Additional notes about this provider..."
+              rows={2}
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all resize-none"
             />
           </div>
           
@@ -476,7 +607,6 @@ export function Providers() {
             </label>
             <input
               type="text"
-              required
               value={editProvider.name}
               onChange={(e) => setEditProvider({ ...editProvider, name: e.target.value })}
               placeholder="e.g., My Custom Provider"
@@ -503,7 +633,6 @@ export function Providers() {
             </label>
             <input
               type="text"
-              required
               value={editProvider.apiUrl}
               onChange={(e) => setEditProvider({ ...editProvider, apiUrl: e.target.value })}
               placeholder="https://api.example.com"
@@ -512,7 +641,7 @@ export function Providers() {
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-              API Key (Optional)
+              API Key
             </label>
             <input
               type="password"
@@ -524,6 +653,110 @@ export function Providers() {
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Leave empty to keep the existing API key
             </p>
+          </div>
+          {editProvider.app === 'codex' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Model
+              </label>
+              <input
+                type="text"
+                value={editProvider.model}
+                onChange={(e) => setEditProvider({ ...editProvider, model: e.target.value })}
+                placeholder="gpt-4o"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+              />
+            </div>
+          )}
+          {editProvider.app === 'claude' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Default Model
+                </label>
+                <input
+                  type="text"
+                  value={editProvider.model}
+                  onChange={(e) => setEditProvider({ ...editProvider, model: e.target.value })}
+                  placeholder="claude-3-5-sonnet-20241022"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Haiku Model (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editProvider.haikuModel}
+                  onChange={(e) => setEditProvider({ ...editProvider, haikuModel: e.target.value })}
+                  placeholder="claude-3-5-haiku-20241022"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Sonnet Model (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editProvider.sonnetModel}
+                  onChange={(e) => setEditProvider({ ...editProvider, sonnetModel: e.target.value })}
+                  placeholder="claude-3-5-sonnet-20241022"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Opus Model (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editProvider.opusModel}
+                  onChange={(e) => setEditProvider({ ...editProvider, opusModel: e.target.value })}
+                  placeholder="claude-3-opus-20240229"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+                />
+              </div>
+            </>
+          )}
+          {editProvider.app === 'gemini' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                Model
+              </label>
+              <input
+                type="text"
+                value={editProvider.model}
+                onChange={(e) => setEditProvider({ ...editProvider, model: e.target.value })}
+                placeholder="gemini-2.0-flash"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Website URL
+            </label>
+            <input
+              type="text"
+              value={editProvider.websiteUrl}
+              onChange={(e) => setEditProvider({ ...editProvider, websiteUrl: e.target.value })}
+              placeholder="https://provider-website.com"
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Notes
+            </label>
+            <textarea
+              value={editProvider.notes}
+              onChange={(e) => setEditProvider({ ...editProvider, notes: e.target.value })}
+              placeholder="Additional notes about this provider..."
+              rows={2}
+              className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all resize-none"
+            />
           </div>
           
           <div className="flex justify-end gap-3 mt-6">

@@ -425,6 +425,13 @@ export class CCSwitchAdapter {
     apiUrl: string;
     apiKey?: string;
     app?: string;
+    websiteUrl?: string;
+    notes?: string;
+    sortIndex?: number;
+    model?: string;
+    haikuModel?: string;
+    sonnetModel?: string;
+    opusModel?: string;
   }): Promise<{ success: boolean; message: string }> {
     // Validate ID format (alphanumeric + hyphens/underscores)
     if (!/^[a-zA-Z0-9_-]+$/.test(params.id)) {
@@ -440,29 +447,60 @@ export class CCSwitchAdapter {
       const name = params.name;
       const apiUrl = params.apiUrl;
       const apiKey = params.apiKey || '';
+      const websiteUrl = params.websiteUrl || '';
+      const notes = params.notes || '';
+      const sortIndex = params.sortIndex || 0;
 
       // Construct settings_config JSON based on app type
       let settingsConfig: Record<string, any> = {};
       
       if (app === 'claude') {
+        // Claude uses ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL
+        // with model configuration for default, haiku, sonnet, opus
+        const defaultModel = params.model || 'claude-3-5-sonnet-20241022';
+        const haikuModel = params.haikuModel || '';
+        const sonnetModel = params.sonnetModel || '';
+        const opusModel = params.opusModel || '';
+        
+        const envConfig: Record<string, string> = {
+          ANTHROPIC_AUTH_TOKEN: apiKey,
+          ANTHROPIC_BASE_URL: apiUrl,
+          ANTHROPIC_MODEL: defaultModel,
+        };
+        
+        // Add optional model configurations
+        if (haikuModel) {
+          envConfig.ANTHROPIC_DEFAULT_HAIKU_MODEL = haikuModel;
+        }
+        if (sonnetModel) {
+          envConfig.ANTHROPIC_DEFAULT_SONNET_MODEL = sonnetModel;
+        }
+        if (opusModel) {
+          envConfig.ANTHROPIC_DEFAULT_OPUS_MODEL = opusModel;
+        }
+        
         settingsConfig = {
-          env: {
-            ANTHROPIC_API_KEY: apiKey,
-            ANTHROPIC_BASE_URL: apiUrl,
-            CLAUDE_CODE_MAX_OUTPUT_TOKENS: "32000",
-            CLAUDE_CODE_SKIP_AUTH_LOGIN: "1"
-          },
-          statusLine: {
-            command: "node ~/.claude/hud/omc-hud.mjs",
-            type: "command"
-          }
+          env: envConfig
         };
       } else if (app === 'codex') {
+        // Codex uses TOML config format with model and model_provider settings
+        const modelValue = params.model || 'gpt-4o';
         settingsConfig = {
           auth: {
             OPENAI_API_KEY: apiKey
           },
-          config: `model = "gpt-4o"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${apiUrl}"\nenv_key = "OPENAI_API_KEY"\nwire_api = "openai"\n`
+          config: `model = "${modelValue}"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${apiUrl}"\nenv_key = "OPENAI_API_KEY"\nwire_api = "openai"\n`
+        };
+      } else if (app === 'gemini') {
+        // Gemini uses GEMINI_API_KEY and optional model configuration
+        const defaultModel = params.model || 'gemini-2.0-flash';
+        settingsConfig = {
+          env: {
+            GEMINI_API_KEY: apiKey,
+            GOOGLE_API_KEY: apiKey,
+            GEMINI_MODEL: defaultModel,
+            GEMINI_BASE_URL: apiUrl
+          }
         };
       } else {
         // Default generic structure
@@ -478,15 +516,22 @@ export class CCSwitchAdapter {
       const metaStr = '{}';
       const costMultiplier = '1.0';
       const providerType = 'custom';
+      const category = 'custom';
 
-      // Construct SQL INSERT statement
-      const sql = `INSERT INTO providers (id, app_type, name, settings_config, category, meta, is_current, in_failover_queue, cost_multiplier, provider_type) VALUES ('${id}', '${app}', '${name}', '${settingsConfigStr.replace(/'/g, "''")}', 'custom', '${metaStr}', 0, 0, '${costMultiplier}', '${providerType}');`;
+      // Construct SQL INSERT statement with all fields
+      const sql = `INSERT INTO providers (id, app_type, name, settings_config, website_url, category, meta, is_current, in_failover_queue, cost_multiplier, provider_type, notes, sort_index, created_at) VALUES ('${id}', '${app}', '${name.replace(/'/g, "''")}', '${settingsConfigStr.replace(/'/g, "''")}', '${websiteUrl.replace(/'/g, "''")}', '${category}', '${metaStr}', 0, 0, '${costMultiplier}', '${providerType}', '${notes.replace(/'/g, "''")}', ${sortIndex}, strftime('%s', 'now'));`;
 
       // Get DB path
       const dbPath = await this.getDbPath();
       
       // Execute sqlite3 command
-      return await this.executeSqlite(dbPath, sql);
+      const result = await this.executeSqlite(dbPath, sql);
+      
+      if (result.success) {
+        result.message = `Successfully added provider '${id}'`;
+      }
+      
+      return result;
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -506,63 +551,165 @@ export class CCSwitchAdapter {
     apiUrl?: string;
     apiKey?: string;
     app?: string;
+    websiteUrl?: string;
+    notes?: string;
+    sortIndex?: number;
+    model?: string;
+    haikuModel?: string;
+    sonnetModel?: string;
+    opusModel?: string;
   }): Promise<{ success: boolean; message: string }> {
     try {
       const app = params.app || 'claude';
       const id = params.id;
       
-      // Get current provider data first to merge
+      // Get DB path
       const dbPath = await this.getDbPath();
-      const currentSql = `SELECT settings_config, name FROM providers WHERE id = '${id}' AND app_type = '${app}';`;
-      const currentResult = await this.executeSqlite(dbPath, currentSql);
       
-      if (!currentResult.success) {
+      // Get current provider data first to merge
+      const currentSql = `SELECT settings_config, name FROM providers WHERE id = '${id}' AND app_type = '${app}';`;
+      const currentResult = await this.executeSqliteQuery(dbPath, currentSql);
+      
+      if (!currentResult) {
         return { success: false, message: 'Provider not found' };
       }
 
-      // Parse current settings
-      // Note: executeSqlite returns raw string output, we need to parse it if we want to be robust
-      // But for now, let's just reconstruct the settings config if API URL or Key is provided
+      // Build update statements
+      const updates: string[] = [];
+      
+      // Update name if provided
+      if (params.name) {
+        updates.push(`name = '${params.name.replace(/'/g, "''")}'`);
+      }
+      
+      // Update website_url if provided
+      if (params.websiteUrl !== undefined) {
+        updates.push(`website_url = '${params.websiteUrl.replace(/'/g, "''")}'`);
+      }
+      
+      // Update notes if provided
+      if (params.notes !== undefined) {
+        updates.push(`notes = '${params.notes.replace(/'/g, "''")}'`);
+      }
+      
+      // Update sort_index if provided
+      if (params.sortIndex !== undefined) {
+        updates.push(`sort_index = ${params.sortIndex}`);
+      }
       
       // If we're updating API config, we need to rebuild the settings_config
-      if (params.apiUrl || params.apiKey) {
-        let settingsConfig: Record<string, any> = {};
-        const apiUrl = params.apiUrl || ''; // Should ideally fetch current if not provided
-        const apiKey = params.apiKey || ''; // Should ideally fetch current if not provided
+      if (params.apiUrl || params.apiKey || params.model || params.haikuModel || params.sonnetModel || params.opusModel) {
+        // Parse current settings to merge
+        let currentSettings: Record<string, any> = {};
+        try {
+          // Extract JSON from the query result (format: "column1|column2")
+          const lines = currentResult.split('\n');
+          for (const line of lines) {
+            if (line.trim() && line.includes('{')) {
+              const jsonMatch = line.match(/\{.*\}/s);
+              if (jsonMatch) {
+                currentSettings = JSON.parse(jsonMatch[0]);
+                break;
+              }
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
+        
+        let settingsConfig: Record<string, any> = currentSettings;
 
         if (app === 'claude') {
-            settingsConfig = {
-              env: {
-                ANTHROPIC_API_KEY: apiKey,
-                ANTHROPIC_BASE_URL: apiUrl,
-                CLAUDE_CODE_MAX_OUTPUT_TOKENS: "32000",
-                CLAUDE_CODE_SKIP_AUTH_LOGIN: "1"
-              },
-              statusLine: {
-                command: "node ~/.claude/hud/omc-hud.mjs",
-                type: "command"
-              }
-            };
+          // Merge with existing settings for Claude
+          const currentEnv = currentSettings.env || {};
+          const envConfig: Record<string, string> = {
+            ...currentEnv,
+          };
+          
+          // Update API credentials if provided
+          if (params.apiKey) {
+            envConfig.ANTHROPIC_AUTH_TOKEN = params.apiKey;
+          }
+          if (params.apiUrl) {
+            envConfig.ANTHROPIC_BASE_URL = params.apiUrl;
+          }
+          
+          // Update model configurations if provided
+          if (params.model !== undefined) {
+            envConfig.ANTHROPIC_MODEL = params.model;
+          }
+          if (params.haikuModel !== undefined) {
+            if (params.haikuModel) {
+              envConfig.ANTHROPIC_DEFAULT_HAIKU_MODEL = params.haikuModel;
+            } else {
+              delete envConfig.ANTHROPIC_DEFAULT_HAIKU_MODEL;
+            }
+          }
+          if (params.sonnetModel !== undefined) {
+            if (params.sonnetModel) {
+              envConfig.ANTHROPIC_DEFAULT_SONNET_MODEL = params.sonnetModel;
+            } else {
+              delete envConfig.ANTHROPIC_DEFAULT_SONNET_MODEL;
+            }
+          }
+          if (params.opusModel !== undefined) {
+            if (params.opusModel) {
+              envConfig.ANTHROPIC_DEFAULT_OPUS_MODEL = params.opusModel;
+            } else {
+              delete envConfig.ANTHROPIC_DEFAULT_OPUS_MODEL;
+            }
+          }
+          
+          settingsConfig = {
+            ...currentSettings,
+            env: envConfig
+          };
         } else if (app === 'codex') {
-            settingsConfig = {
-              auth: {
-                OPENAI_API_KEY: apiKey
-              },
-              config: `model = "gpt-4o"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${apiUrl}"\nenv_key = "OPENAI_API_KEY"\nwire_api = "openai"\n`
-            };
+          // For Codex, update the TOML config
+          const currentAuth = currentSettings.auth || {};
+          const model = params.model || 'gpt-4o';
+          const apiUrl = params.apiUrl || '';
+          
+          settingsConfig = {
+            ...currentSettings,
+            auth: {
+              ...currentAuth,
+              OPENAI_API_KEY: params.apiKey || currentAuth.OPENAI_API_KEY || ''
+            },
+            config: `model = "${model}"\nmodel_provider = "openai-chat-completions"\npreferred_auth_method = "apikey"\n\n[model_providers.openai-chat-completions]\nname = "OpenAI"\nbase_url = "${apiUrl}"\nenv_key = "OPENAI_API_KEY"\nwire_api = "openai"\n`
+          };
+        } else if (app === 'gemini') {
+          // Merge with existing settings for Gemini
+          const currentEnv = currentSettings.env || {};
+          
+          settingsConfig = {
+            ...currentSettings,
+            env: {
+              ...currentEnv,
+              GEMINI_API_KEY: params.apiKey || currentEnv.GEMINI_API_KEY || '',
+              GOOGLE_API_KEY: params.apiKey || currentEnv.GOOGLE_API_KEY || '',
+              GEMINI_BASE_URL: params.apiUrl || currentEnv.GEMINI_BASE_URL || '',
+              GEMINI_MODEL: params.model || currentEnv.GEMINI_MODEL || 'gemini-2.0-flash'
+            }
+          };
         }
         
         const settingsConfigStr = JSON.stringify(settingsConfig);
-        const updateSql = `UPDATE providers SET settings_config = '${settingsConfigStr.replace(/'/g, "''")}' WHERE id = '${id}' AND app_type = '${app}';`;
-        await this.executeSqlite(dbPath, updateSql);
+        updates.push(`settings_config = '${settingsConfigStr.replace(/'/g, "''")}'`);
       }
 
-      if (params.name) {
-        const updateNameSql = `UPDATE providers SET name = '${params.name}' WHERE id = '${id}' AND app_type = '${app}';`;
-        await this.executeSqlite(dbPath, updateNameSql);
+      if (updates.length === 0) {
+        return { success: true, message: 'No changes provided' };
       }
 
-      return { success: true, message: 'Provider updated successfully' };
+      const updateSql = `UPDATE providers SET ${updates.join(', ')} WHERE id = '${id}' AND app_type = '${app}';`;
+      const result = await this.executeSqlite(dbPath, updateSql);
+      
+      if (result.success) {
+        result.message = 'Provider updated successfully';
+      }
+      
+      return result;
 
     } catch (error) {
       return {
@@ -577,13 +724,44 @@ export class CCSwitchAdapter {
    */
   async duplicateProvider(id: string, newId: string, app: string = 'claude'): Promise<{ success: boolean; message: string }> {
     try {
+        // Validate new ID format
+        if (!/^[a-zA-Z0-9_-]+$/.test(newId)) {
+            return {
+                success: false,
+                message: 'New provider ID must contain only alphanumeric characters, hyphens, and underscores.'
+            };
+        }
+        
         const dbPath = await this.getDbPath();
-        // Copy row with new ID
-        const sql = `INSERT INTO providers (id, app_type, name, settings_config, category, meta, is_current, in_failover_queue, cost_multiplier, provider_type)
-                     SELECT '${newId}', app_type, name || ' (Copy)', settings_config, category, meta, 0, 0, cost_multiplier, provider_type
+        
+        // Check if source provider exists
+        const checkSql = `SELECT id FROM providers WHERE id = '${id}' AND app_type = '${app}';`;
+        const checkResult = await this.executeSqliteQuery(dbPath, checkSql);
+        
+        if (!checkResult) {
+            return { success: false, message: `Provider '${id}' not found` };
+        }
+        
+        // Check if new ID already exists
+        const checkNewSql = `SELECT id FROM providers WHERE id = '${newId}' AND app_type = '${app}';`;
+        const checkNewResult = await this.executeSqliteQuery(dbPath, checkNewSql);
+        
+        if (checkNewResult) {
+            return { success: false, message: `Provider with ID '${newId}' already exists` };
+        }
+        
+        // Copy row with new ID, including all fields
+        const sql = `INSERT INTO providers (id, app_type, name, settings_config, website_url, category, meta, is_current, in_failover_queue, cost_multiplier, provider_type, notes, sort_index, icon, icon_color, limit_daily_usd, limit_monthly_usd, created_at)
+                     SELECT '${newId}', app_type, name || ' (Copy)', settings_config, website_url, category, meta, 0, 0, cost_multiplier, provider_type, notes, sort_index, icon, icon_color, limit_daily_usd, limit_monthly_usd, strftime('%s', 'now')
                      FROM providers WHERE id = '${id}' AND app_type = '${app}';`;
         
-        return await this.executeSqlite(dbPath, sql);
+        const result = await this.executeSqlite(dbPath, sql);
+        
+        if (result.success) {
+            result.message = `Successfully duplicated provider '${id}' to '${newId}'`;
+        }
+        
+        return result;
     } catch (error) {
         return {
             success: false,
@@ -597,7 +775,7 @@ export class CCSwitchAdapter {
    */
   async speedtestProvider(id: string, app: string = 'claude'): Promise<{ success: boolean; message: string; latency?: number }> {
       try {
-          const args = ['provider', 'speedtest', id, '--app', app];
+          const args = [...this.getAppFlagArgs(app), 'provider', 'speedtest', id];
           const result = await this.execute(args);
           
           if (result.exitCode === 0) {
@@ -646,14 +824,41 @@ export class CCSwitchAdapter {
 
       child.on('close', (code) => {
         if (code === 0) {
-          resolve({ success: true, message: 'Provider added successfully' });
+          resolve({ success: true, message: 'Operation completed successfully' });
         } else {
-          resolve({ success: false, message: `Failed to add provider: ${stderr}` });
+          resolve({ success: false, message: `SQLite operation failed: ${stderr}` });
         }
       });
 
       child.on('error', (error) => {
         resolve({ success: false, message: `Failed to execute sqlite3: ${error.message}` });
+      });
+    });
+  }
+
+  /**
+   * Execute sqlite3 query and return result
+   */
+  private async executeSqliteQuery(dbPath: string, sql: string): Promise<string> {
+    return new Promise((resolve) => {
+      const child = spawn('sqlite3', [dbPath, sql]);
+      let stdout = '';
+      let stderr = '';
+      
+      child.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      child.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('close', () => {
+        resolve(stdout.trim());
+      });
+
+      child.on('error', () => {
+        resolve('');
       });
     });
   }
@@ -675,28 +880,34 @@ export class CCSwitchAdapter {
    */
   async deleteProvider(providerId: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = [...this.getAppFlagArgs(app), 'provider', 'delete', providerId];
+      const appType = app || 'claude';
+      const dbPath = await this.getDbPath();
       
-      const result = await this.execute(args);
+      // Check if this is the current provider
+      const checkCurrentSql = `SELECT is_current FROM providers WHERE id = '${providerId}' AND app_type = '${appType}';`;
+      const checkResult = await this.executeSqliteQuery(dbPath, checkCurrentSql);
       
-      if (result.exitCode !== 0) {
+      if (checkResult.includes('1')) {
         return {
           success: false,
-          message: `Failed to delete provider: ${result.stderr || result.stdout}`,
+          message: 'Cannot delete the current active provider. Please switch to another provider first.',
         };
       }
+      
+      // Delete using direct SQLite access
+      const sql = `DELETE FROM providers WHERE id = '${providerId}' AND app_type = '${appType}';`;
+      const result = await this.executeSqlite(dbPath, sql);
+      
+      if (result.success) {
+        configStorage.addLog({
+          level: 'info',
+          operation: 'delete_provider',
+          message: `Deleted provider: ${providerId}`,
+          details: { providerId, appType },
+        });
+      }
 
-      configStorage.addLog({
-        level: 'info',
-        operation: 'delete_provider',
-        message: `Deleted provider: ${providerId}`,
-        details: { providerId },
-      });
-
-      return {
-        success: true,
-        message: `Successfully deleted provider: ${providerId}`,
-      };
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return {
@@ -1589,21 +1800,38 @@ export class CCSwitchAdapter {
     for (const line of lines) {
       const trimmed = line.trim();
       
+      // Skip empty lines
+      if (!trimmed) continue;
+      
+      // Skip table borders and headers
+      if (trimmed.includes('Directory') || trimmed.includes('Name') || 
+          /^[┌┐└┘├┤┬┴┼─═│║╞╡╪╤╧╟╢╥╨╫╬╭╮╯╰╱╲╳╌]+$/.test(trimmed)) {
+        continue;
+      }
+      
+      // Handle table format with ┆ separator
       if (trimmed.includes('┆')) {
-        if (trimmed.includes('┌') || trimmed.includes('└') || trimmed.includes('╞') ||
-            trimmed.includes('═') || trimmed.includes('─') || trimmed.includes('Name') ||
-            trimmed.includes('Description')) {
+        // Skip lines that are purely box drawing characters
+        if (/^[┌┐└┘├┤┬┴┼─═│║╞╡╪╤╧╟╢╥╨╫╬╭╮╯╰╱╲╳╌]+$/.test(trimmed)) {
           continue;
         }
         
-        const cells = trimmed.split('┆').map(cell => cell.trim().replace(/[│┌┐└┘╞═╪╡║]/g, '').trim());
+        // Split by ┆ and clean up cells
+        const cells = trimmed.split('┆').map(cell => cell.trim()).filter(cell => cell);
+        
         if (cells.length >= 2) {
-          const name = cells[0];
-          const description = cells[1] || '';
-          const installed = cells[2]?.includes('✓') || trimmed.includes('[installed]');
+          // First cell is usually empty or has install indicator
+          // Second cell is Directory (which is the skill ID)
+          // Third cell is Name
+          const id = cells[1] || '';
+          const name = cells[2] || cells[1] || '';
           
-          if (name && name !== '' && !name.includes('ℹ') && !name.includes('→')) {
-            skills.push({ name, description, installed });
+          if (id && id !== '' && !id.includes('ℹ') && !id.includes('→') && !id.includes('Available')) {
+            skills.push({ 
+              name: id, 
+              description: name !== id ? name : '', 
+              installed: false 
+            });
           }
         }
       } else if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('===')) {
@@ -1629,10 +1857,7 @@ export class CCSwitchAdapter {
    */
   async syncSkills(app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['skills', 'sync'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'sync'];
       
       const result = await this.execute(args);
       
@@ -1665,10 +1890,7 @@ export class CCSwitchAdapter {
     app: string;
   }>> {
     try {
-      const args = ['skills', 'scan-unmanaged'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'scan-unmanaged'];
       
       const result = await this.execute(args);
       
@@ -1723,10 +1945,7 @@ export class CCSwitchAdapter {
    */
   async importSkillsFromApps(app?: string): Promise<{ success: boolean; message: string; imported?: string[] }> {
     try {
-      const args = ['skills', 'import-from-apps'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'import-from-apps'];
       
       const result = await this.execute(args);
       
@@ -1771,10 +1990,7 @@ export class CCSwitchAdapter {
     installed?: boolean;
   } | null> {
     try {
-      const args = ['skills', 'info', skillName];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'skills', 'info', skillName];
       
       const result = await this.execute(args);
       
@@ -1885,10 +2101,7 @@ export class CCSwitchAdapter {
    */
   async exportConfig(outputPath: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['config', 'export', outputPath];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'config', 'export', outputPath];
       
       const result = await this.execute(args);
       
@@ -1917,10 +2130,7 @@ export class CCSwitchAdapter {
    */
   async importConfig(inputPath: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['config', 'import', inputPath];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'config', 'import', inputPath];
       
       const result = await this.execute(args);
       
@@ -1949,10 +2159,7 @@ export class CCSwitchAdapter {
    */
   async backupConfig(app?: string): Promise<{ success: boolean; message: string; backupPath?: string }> {
     try {
-      const args = ['config', 'backup'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'config', 'backup'];
       
       const result = await this.execute(args);
       
@@ -1986,10 +2193,7 @@ export class CCSwitchAdapter {
    */
   async restoreConfig(backupPath: string, app?: string): Promise<{ success: boolean; message: string }> {
     try {
-      const args = ['config', 'restore', backupPath];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'config', 'restore', backupPath];
       
       const result = await this.execute(args);
       
@@ -2018,10 +2222,7 @@ export class CCSwitchAdapter {
    */
   async getConfigPath(app?: string): Promise<string | null> {
     try {
-      const args = ['config', 'path'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'config', 'path'];
       
       const result = await this.execute(args);
       
@@ -2050,10 +2251,7 @@ export class CCSwitchAdapter {
     sourceLocation: string;
   }>> {
     try {
-      const args = ['env', 'list'];
-      if (app) {
-        args.unshift('--app', app);
-      }
+      const args = [...this.getAppFlagArgs(app), 'env', 'list'];
       
       const result = await this.execute(args);
       

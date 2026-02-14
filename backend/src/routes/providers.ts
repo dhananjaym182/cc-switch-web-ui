@@ -34,7 +34,7 @@ router.get('/', async (req: Request, res: Response) => {
  * Add a new provider
  */
 router.post('/add', async (req: Request, res: Response) => {
-  const { id, name, apiUrl, apiKey, app } = req.body;
+  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, haikuModel, sonnetModel, opusModel } = req.body;
 
   if (!id || !name || !apiUrl) {
     res.status(400).json({
@@ -51,6 +51,13 @@ router.post('/add', async (req: Request, res: Response) => {
       apiUrl,
       apiKey,
       app,
+      websiteUrl,
+      notes,
+      sortIndex,
+      model,
+      haikuModel,
+      sonnetModel,
+      opusModel,
     });
 
     if (result.success) {
@@ -141,12 +148,12 @@ router.get('/current', async (req: Request, res: Response) => {
  * Edit an existing provider
  */
 router.post('/edit', async (req: Request, res: Response) => {
-  const { id, name, apiUrl, apiKey, app } = req.body;
+  const { id, name, apiUrl, apiKey, app, websiteUrl, notes, sortIndex, model, haikuModel, sonnetModel, opusModel } = req.body;
 
-  if (!id || !name || !apiUrl) {
+  if (!id) {
     res.status(400).json({
       success: false,
-      error: 'id, name, and apiUrl are required',
+      error: 'id is required',
     });
     return;
   }
@@ -158,6 +165,13 @@ router.post('/edit', async (req: Request, res: Response) => {
       apiUrl,
       apiKey,
       app,
+      websiteUrl,
+      notes,
+      sortIndex,
+      model,
+      haikuModel,
+      sonnetModel,
+      opusModel,
     });
 
     if (result.success) {

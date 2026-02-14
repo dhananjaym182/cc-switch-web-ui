@@ -46,6 +46,10 @@ export function Skills() {
   const [showSyncMethodModal, setShowSyncMethodModal] = useState(false);
   const [syncMethod, setSyncMethod] = useState<'auto' | 'symlink' | 'copy'>('auto');
   const [isUpdatingSyncMethod, setIsUpdatingSyncMethod] = useState(false);
+  
+  // Discover skills search state
+  const [discoverSearchQuery, setDiscoverSearchQuery] = useState('');
+  const [installingSkill, setInstallingSkill] = useState<string | null>(null);
 
   const fetchSkills = async () => {
     setIsLoading(true);
@@ -311,8 +315,17 @@ export function Skills() {
              Refresh
            </Button>
            <Button variant="secondary" onClick={handleDiscover} disabled={isDiscovering}>
-             <Search className="w-4 h-4 mr-2" />
-             Discover
+             {isDiscovering ? (
+               <>
+                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                 Discovering...
+               </>
+             ) : (
+               <>
+                 <Search className="w-4 h-4 mr-2" />
+                 Discover
+               </>
+             )}
            </Button>
            <Button variant="secondary" onClick={handleSync} disabled={isSyncing}>
              <Download className="w-4 h-4 mr-2" />
@@ -664,6 +677,7 @@ export function Skills() {
         onClose={() => {
           setShowDiscoverModal(false);
           setDiscoveredSkills([]);
+          setDiscoverSearchQuery('');
         }}
         title="Discover Skills"
         size="lg"
@@ -673,6 +687,18 @@ export function Skills() {
             Available skills from enabled repositories:
           </p>
           
+          {/* Search input for discovered skills */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={discoverSearchQuery}
+              onChange={(e) => setDiscoverSearchQuery(e.target.value)}
+              placeholder="Search skills..."
+              className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
+            />
+          </div>
+          
           {discoveredSkills.length === 0 ? (
             <div className="text-center py-8 text-slate-500 dark:text-slate-400">
               <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -680,43 +706,75 @@ export function Skills() {
               <p className="text-xs mt-2">Add repositories to discover new skills</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {discoveredSkills.map((skill: any, index: number) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800"
-                >
-                  <div>
-                    <div className="font-medium text-slate-900 dark:text-white">{skill.name}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{skill.description}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {skill.installed && (
-                      <span className="text-xs text-green-600 dark:text-green-400">Installed</span>
-                    )}
-                    {!skill.installed && (
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            await skillsApi.install(skill.name, selectedApp);
-                            setSuccess(`Skill "${skill.name}" installed successfully`);
-                            // Refresh discovered skills
-                            const response = await skillsApi.discover(selectedApp);
-                            setDiscoveredSkills(response.skills || []);
-                            await fetchSkills();
-                          } catch (err) {
-                            setError(err instanceof Error ? err.message : 'Failed to install skill');
-                          }
-                        }}
-                      >
-                        Install
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <>
+              {/* Show count of filtered results */}
+              {discoverSearchQuery && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Showing {discoveredSkills.filter((skill: any) => 
+                    skill.name.toLowerCase().includes(discoverSearchQuery.toLowerCase()) ||
+                    (skill.description && skill.description.toLowerCase().includes(discoverSearchQuery.toLowerCase()))
+                  ).length} of {discoveredSkills.length} skills
+                </p>
+              )}
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {discoveredSkills
+                  .filter((skill: any) => 
+                    !discoverSearchQuery || 
+                    skill.name.toLowerCase().includes(discoverSearchQuery.toLowerCase()) ||
+                    (skill.description && skill.description.toLowerCase().includes(discoverSearchQuery.toLowerCase()))
+                  )
+                  .map((skill: any, index: number) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-100 dark:border-slate-800"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-900 dark:text-white truncate">{skill.name}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{skill.description}</div>
+                      </div>
+                      <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                        {skill.installed || skills.some(s => s.name === skill.name || s.id === skill.name) ? (
+                          <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Installed
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            disabled={installingSkill === skill.name}
+                            onClick={async () => {
+                              setInstallingSkill(skill.name);
+                              try {
+                                await skillsApi.install(skill.name, selectedApp);
+                                setSuccess(`Skill "${skill.name}" installed successfully`);
+                                // Refresh discovered skills
+                                const response = await skillsApi.discover(selectedApp);
+                                setDiscoveredSkills(response.skills || []);
+                                await fetchSkills();
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : 'Failed to install skill');
+                              } finally {
+                                setInstallingSkill(null);
+                              }
+                            }}
+                          >
+                            {installingSkill === skill.name ? (
+                              <>
+                                <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                                Installing...
+                              </>
+                            ) : (
+                              'Install'
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </>
           )}
 
           <div className="flex justify-between mt-6">
@@ -724,7 +782,10 @@ export function Skills() {
               <Upload className="w-4 h-4 mr-2" />
               Scan Unmanaged
             </Button>
-            <Button variant="secondary" onClick={() => setShowDiscoverModal(false)}>
+            <Button variant="secondary" onClick={() => {
+              setShowDiscoverModal(false);
+              setDiscoverSearchQuery('');
+            }}>
               Close
             </Button>
           </div>
