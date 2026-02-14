@@ -1,4 +1,4 @@
-# cc-switch-web-ui
+# CC-Switch Web UI
 
 A modern web-based user interface for managing [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli). This application provides an intuitive GUI to manage AI providers, MCP servers, prompts, skills, and configurations for Claude Code, Codex, and Gemini CLI applications.
 
@@ -15,7 +15,6 @@ A modern web-based user interface for managing [cc-switch-cli](https://github.co
 - [API Reference](#-api-reference)
 - [Development](#-development)
 - [Project Structure](#-project-structure)
-- [Screenshots](#-screenshots)
 - [Contributing](#-contributing)
 - [License](#-license)
 
@@ -122,7 +121,7 @@ cc-switch --help
 - 👤 Authentication with password protection
 - 📊 Dashboard with status overview
 - 📝 Activity logs
-- 🎨 Modern, responsive UI with dark/light theme
+- 🎨 Modern, responsive UI with dark theme
 - 🔒 Secure API with Bearer token authentication
 
 ## 🚀 Installation
@@ -134,24 +133,15 @@ git clone https://github.com/yourusername/cc-switch-web-ui.git
 cd cc-switch-web-ui
 ```
 
-### Install Backend Dependencies
+### Install Dependencies
 
 ```bash
-cd backend
-npm install
-```
-
-### Install Frontend Dependencies
-
-```bash
-cd ../frontend
 npm install
 ```
 
 ### Configure Environment
 
 ```bash
-cd ../backend
 cp .env.example .env
 ```
 
@@ -172,46 +162,30 @@ CORS_ORIGIN=*
 
 ## 🎮 Usage
 
-### Start the Backend Server
+### Start the Development Server
 
 ```bash
-cd backend
-npm run dev    # Development mode with auto-reload
-# or
-npm run build && npm start  # Production mode
-```
-
-The backend will start at `http://localhost:3010`
-
-### Start the Frontend Development Server
-
-```bash
-cd frontend
 npm run dev
 ```
 
-The frontend will start at `http://localhost:5173`
+The application will start at `http://localhost:3010` (or the port you configured)
 
 ### Production Build
 
 ```bash
-# Build frontend
-cd frontend
 npm run build
-
-# The built files will be in frontend/dist/
-# Serve them with nginx, Apache, or any static file server
+npm start
 ```
 
 ### Access the Application
 
-1. Open your browser and navigate to `http://localhost:5173` (development) or your production URL
+1. Open your browser and navigate to `http://localhost:3010`
 2. Log in with the password you set in `ADMIN_PASSWORD`
 3. Start managing your AI provider configurations!
 
 ## ⚙️ Configuration
 
-### Backend Environment Variables
+### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -223,14 +197,6 @@ npm run build
 | `CC_SWITCH_PATH` | Custom path to cc-switch binary | `/usr/local/bin/cc-switch` |
 | `DEBUG` | Enable debug logging | `false` |
 | `LOG_LEVEL` | Logging level | `info` |
-
-### Frontend Configuration
-
-The frontend can be configured by setting environment variables:
-
-```env
-VITE_API_URL=http://localhost:3010
-```
 
 ## 📚 API Reference
 
@@ -256,14 +222,16 @@ Authorization: Bearer <token>
 | `/api/status` | GET | Get current provider/profile status |
 | `/api/providers` | GET | List all providers |
 | `/api/providers/switch` | POST | Switch to a provider |
-| `/api/providers` | POST | Add new provider |
-| `/api/providers/:id` | PUT | Edit provider |
+| `/api/providers/add` | POST | Add new provider |
+| `/api/providers/edit` | POST | Edit provider |
+| `/api/providers/duplicate` | POST | Duplicate provider |
+| `/api/providers/speedtest` | POST | Run speedtest on provider |
 | `/api/providers/:id` | DELETE | Delete provider |
 | `/api/mcp` | GET | List MCP servers |
 | `/api/mcp` | POST | Add MCP server |
-| `/api/mcp/:id/toggle` | POST | Toggle MCP server |
+| `/api/mcp/toggle` | POST | Toggle MCP server |
 | `/api/prompts` | GET | List prompts |
-| `/api/prompts` | POST | Create prompt |
+| `/api/prompts/create` | POST | Create prompt |
 | `/api/prompts/:id/activate` | POST | Activate prompt |
 | `/api/skills` | GET | List skills |
 | `/api/skills/search` | GET | Search skills |
@@ -280,9 +248,11 @@ Authorization: Bearer <token>
 
 ```
 cc-switch-web-ui/
-├── backend/                    # Express.js backend
-│   ├── src/
-│   │   ├── index.ts           # Main entry point
+├── src/
+│   ├── main.tsx               # Frontend entry point
+│   ├── App.tsx                # Main app component
+│   ├── server/                # Backend server code
+│   │   ├── index.ts           # Server entry point
 │   │   ├── routes/            # API route handlers
 │   │   │   ├── auth.ts        # Authentication routes
 │   │   │   ├── config.ts      # Configuration management
@@ -304,80 +274,63 @@ cc-switch-web-ui/
 │   │   └── types/
 │   │       ├── index.ts       # Type definitions
 │   │       └── db.ts          # Database types
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── frontend/                   # React frontend
-│   ├── src/
-│   │   ├── main.tsx           # Entry point
-│   │   ├── App.tsx            # Main app component
-│   │   ├── components/        # Reusable components
-│   │   │   ├── Button.tsx
-│   │   │   ├── Card.tsx
-│   │   │   ├── Header.tsx
-│   │   │   ├── Layout.tsx
-│   │   │   ├── Modal.tsx
-│   │   │   ├── ProtectedRoute.tsx
-│   │   │   ├── ProviderCard.tsx
-│   │   │   ├── Sidebar.tsx
-│   │   │   └── StatusBadge.tsx
-│   │   ├── pages/             # Page components
-│   │   │   ├── Config.tsx
-│   │   │   ├── CustomTools.tsx
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── EnvVars.tsx
-│   │   │   ├── Login.tsx
-│   │   │   ├── Logs.tsx
-│   │   │   ├── McpServers.tsx
-│   │   │   ├── Profiles.tsx
-│   │   │   ├── Prompts.tsx
-│   │   │   ├── Providers.tsx
-│   │   │   ├── Settings.tsx
-│   │   │   └── Skills.tsx
-│   │   ├── services/
-│   │   │   └── api.ts         # API client
-│   │   ├── hooks/             # Custom React hooks
-│   │   │   ├── useApi.ts
-│   │   │   └── useAuth.ts
-│   │   ├── contexts/
-│   │   │   └── AppContext.tsx # Global state
-│   │   └── types/
-│   │       └── index.ts       # Type definitions
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── tailwind.config.js
-│
-└── README.md
+│   ├── components/            # Reusable UI components
+│   │   ├── Button.tsx
+│   │   ├── Card.tsx
+│   │   ├── Header.tsx
+│   │   ├── Layout.tsx
+│   │   ├── Modal.tsx
+│   │   ├── ProtectedRoute.tsx
+│   │   ├── ProviderCard.tsx
+│   │   ├── Sidebar.tsx
+│   │   └── StatusBadge.tsx
+│   ├── pages/                 # Page components
+│   │   ├── Config.tsx
+│   │   ├── CustomTools.tsx
+│   │   ├── Dashboard.tsx
+│   │   ├── EnvVars.tsx
+│   │   ├── Login.tsx
+│   │   ├── Logs.tsx
+│   │   ├── McpServers.tsx
+│   │   ├── Profiles.tsx
+│   │   ├── Prompts.tsx
+│   │   ├── Providers.tsx
+│   │   ├── Settings.tsx
+│   │   └── Skills.tsx
+│   ├── services/
+│   │   └── api.ts             # API client
+│   ├── hooks/                 # Custom React hooks
+│   │   ├── useApi.ts
+│   │   └── useAuth.ts
+│   ├── contexts/
+│   │   └── AppContext.tsx     # Global state
+│   └── types/
+│       └── index.ts           # Type definitions
+├── package.json
+├── vite.config.ts
+├── tailwind.config.js
+├── tsconfig.json              # Frontend TypeScript config
+└── tsconfig.server.json       # Server TypeScript config
 ```
 
 ### Available Scripts
 
-#### Backend
-
 ```bash
-npm run dev      # Start development server with auto-reload
-npm run build    # Build for production
+npm run dev      # Start development server (single command)
+npm run build    # Build for production (client + server)
 npm start        # Start production server
 npm run lint     # Run ESLint
 npm run typecheck # Run TypeScript type checking
 ```
 
-#### Frontend
-
-```bash
-npm run dev      # Start development server
-npm run build    # Build for production
-npm run preview  # Preview production build
-npm run lint     # Run ESLint
-```
-
 ### Tech Stack
 
-**Backend:**
+**Server:**
 - Express.js - Web framework
 - TypeScript - Type safety
 - Helmet - Security headers
 - CORS - Cross-origin support
+- Vite middleware - Development server with HMR
 
 **Frontend:**
 - React 18 - UI library
