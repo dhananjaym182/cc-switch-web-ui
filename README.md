@@ -1,9 +1,12 @@
 # CC-Switch Web UI
 
-A modern web-based user interface for managing [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli). This application provides an intuitive GUI to manage AI providers, MCP servers, prompts, skills, and configurations for Claude Code, Codex, and Gemini CLI applications.
+A modern web-based user interface for managing [cc-switch-cli](https://github.com/SaladDay/cc-switch-cli). This application provides an intuitive GUI to manage AI providers, MCP servers, prompts, skills, and configurations for **Claude Code, Codex, Gemini, and Kilo Code / OpenCode** CLI applications.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg)
+
+> **GitHub Short Description:**
+> Modern Web UI for CC-Switch & Kilo Code CLI: Manage AI Providers, MCP Servers, and Advanced Configurations (Claude, Gemini, Codex, OpenCode).
 
 ## 📋 Table of Contents
 
@@ -72,6 +75,13 @@ cc-switch --help
 - **cc-switch-cli**: Latest version (see installation above)
 
 ## ✨ Features
+
+### Kilo Code / OpenCode Integration (New!)
+- 🛠️ **Advanced Configuration Management**: Full support for editing `opencode.json`, `opencode.jsonc`, and `kilocode.json`.
+- 🤖 **Multi-Model Provider Support**: Create and manage custom providers with support for multiple models per provider (e.g., DeepSeek, Gemini 2.5, etc.).
+- 🔄 **Smart Config Merging**: Automatically detects and merges configurations from multiple files, prioritizing user preferences (e.g., `opencode.json` > `kilocode.json`).
+- ⚡ **TUI Settings**: Configure CLI TUI options like `scroll_acceleration` directly from the UI.
+- 📁 **Dynamic Path Resolution**: Automatically locates configuration files in standard user directories (`~/.config/kilo/`, `~/.config/opencode/`).
 
 ### Provider Management
 - 📋 List all configured AI providers
@@ -268,6 +278,7 @@ cc-switch-web-ui/
 │   │   ├── services/
 │   │   │   ├── ccswitch-adapter.ts  # CLI wrapper service
 │   │   │   ├── config-storage.ts    # Configuration storage
+│   │   │   └── kilocode-service.ts  # Kilo/OpenCode Service (New!)
 │   │   │   └── custom-cli-engine.ts # Custom CLI execution
 │   │   ├── middleware/
 │   │   │   └── auth.ts        # Authentication middleware
