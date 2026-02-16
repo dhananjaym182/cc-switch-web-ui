@@ -171,35 +171,33 @@ export class CCSwitchAdapter {
       
       // Query all provider configs for the app
       const sql = `SELECT id, settings_config, website_url, notes, sort_index FROM providers WHERE app_type = '${appType}';`;
-      const result = await this.executeSqliteQuery(dbPath, sql);
+      const rows = await this.executeSqliteQueryJsonAll(dbPath, sql);
       
       // Parse the result and build a map
       const configMap = new Map<string, { settingsConfig: Record<string, any>; websiteUrl: string; notes: string; sortIndex: number }>();
       
-      const lines = result.split('\n');
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      for (const row of rows) {
+        const id = row.id;
+        let settingsConfig: Record<string, any> = {};
         
-        // Parse: id|settings_config|website_url|notes|sort_index
-        const parts = line.split('|');
-        if (parts.length >= 5) {
-          const id = parts[0];
-          const settingsConfigStr = parts[1];
-          const websiteUrl = parts[2] || '';
-          const notes = parts[3] || '';
-          const sortIndex = parseInt(parts[4]) || 0;
-          
-          let settingsConfig: Record<string, any> = {};
-          try {
-            if (settingsConfigStr && settingsConfigStr.trim()) {
-              settingsConfig = JSON.parse(settingsConfigStr);
+        try {
+          if (row.settings_config) {
+            if (typeof row.settings_config === 'string') {
+              settingsConfig = JSON.parse(row.settings_config);
+            } else {
+              settingsConfig = row.settings_config;
             }
-          } catch {
-            // Ignore parse errors
           }
-          
-          configMap.set(id, { settingsConfig, websiteUrl, notes, sortIndex });
+        } catch {
+          // Ignore parse errors
         }
+        
+        configMap.set(id, {
+          settingsConfig,
+          websiteUrl: row.website_url || '',
+          notes: row.notes || '',
+          sortIndex: row.sort_index || 0
+        });
       }
       
       // Enrich providers with config
@@ -664,9 +662,9 @@ export class CCSwitchAdapter {
       // Get DB path
       const dbPath = await this.getDbPath();
       
-      // Get current provider data first to merge
+      // Get current provider data first to merge using JSON query for reliable parsing
       const currentSql = `SELECT settings_config, name FROM providers WHERE id = '${id}' AND app_type = '${app}';`;
-      const currentResult = await this.executeSqliteQuery(dbPath, currentSql);
+      const currentResult = await this.executeSqliteQueryJson(dbPath, currentSql);
       
       if (!currentResult) {
         return { success: false, message: 'Provider not found' };
@@ -697,22 +695,18 @@ export class CCSwitchAdapter {
       
       // If we're updating API config, we need to rebuild the settings_config
       if (params.apiUrl || params.apiKey || params.model || params.haikuModel || params.sonnetModel || params.opusModel) {
-        // Parse current settings to merge
+        // Parse current settings from JSON result
         let currentSettings: Record<string, any> = {};
         try {
-          // Extract JSON from the query result (format: "column1|column2")
-          const lines = currentResult.split('\n');
-          for (const line of lines) {
-            if (line.trim() && line.includes('{')) {
-              const jsonMatch = line.match(/\{.*\}/s);
-              if (jsonMatch) {
-                currentSettings = JSON.parse(jsonMatch[0]);
-                break;
-              }
+          if (currentResult.settings_config) {
+            if (typeof currentResult.settings_config === 'string') {
+              currentSettings = JSON.parse(currentResult.settings_config);
+            } else {
+              currentSettings = currentResult.settings_config;
             }
           }
-        } catch {
-          // Ignore parse errors
+        } catch (error) {
+          console.error('Error parsing current settings:', error);
         }
         
         let settingsConfig: Record<string, any> = currentSettings;
@@ -1160,6 +1154,89 @@ export class CCSwitchAdapter {
   }
 
   /**
+   * Execute sqlite3 query and return all results as JSON array
+   */
+  private async executeSqliteQueryJsonAll(dbPath: string, sql: string): Promise<any[]> {
+    return new Promise((resolve) => {
+      // Use -json flag to get JSON output
+      const child = spawn('sqlite3', ['-json', dbPath, sql]);
+      let stdout = '';
+      
+      child.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      child.on('close', () => {
+        try {
+          if (stdout.trim()) {
+            const result = JSON.parse(stdout.trim());
+            if (Array.isArray(result)) {
+              resolve(result);
+            } else {
+              resolve([result]);
+            }
+          } else {
+            resolve([]);
+          }
+        } catch (e) {
+          console.error('Failed to parse sqlite JSON output:', e);
+          resolve([]);
+        }
+      });
+
+      child.on('error', () => {
+        resolve([]);
+      });
+    });
+  }
+
+  /**
+   * Execute sqlite3 query and return result as JSON
+   * This is more reliable for columns that contain JSON data
+   */
+  private async executeSqliteQueryJson(dbPath: string, sql: string): Promise<Record<string, any> | null> {
+    return new Promise((resolve) => {
+      // Use -json flag to get JSON output
+      const child = spawn('sqlite3', ['-json', dbPath, sql]);
+      let stdout = '';
+      let stderr = '';
+      
+      child.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      child.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      child.on('close', () => {
+        try {
+          if (stdout.trim()) {
+            const result = JSON.parse(stdout.trim());
+            // sqlite3 -json returns an array, return first row if exists
+            if (Array.isArray(result) && result.length > 0) {
+              resolve(result[0]);
+            } else if (!Array.isArray(result) && result) {
+              resolve(result);
+            } else {
+              resolve(null);
+            }
+          } else {
+            resolve(null);
+          }
+        } catch (e) {
+          console.error('Failed to parse sqlite JSON output:', e);
+          resolve(null);
+        }
+      });
+
+      child.on('error', () => {
+        resolve(null);
+      });
+    });
+  }
+
+  /**
    * Edit a provider
    */
 
@@ -1264,47 +1341,39 @@ export class CCSwitchAdapter {
       const dbPath = await this.getDbPath();
       
       const sql = `SELECT id, name, settings_config, website_url, notes, sort_index, is_current FROM providers WHERE id = '${providerId}' AND app_type = '${appType}';`;
-      const result = await this.executeSqliteQuery(dbPath, sql);
+      const result = await this.executeSqliteQueryJson(dbPath, sql);
       
-      if (!result.trim()) {
+      if (!result) {
         return null;
       }
       
-      // Parse: id|name|settings_config|website_url|notes|sort_index|is_current
-      const parts = result.split('|');
-      if (parts.length >= 7) {
-        const id = parts[0];
-        const name = parts[1];
-        const settingsConfigStr = parts[2];
-        const websiteUrl = parts[3] || '';
-        const notes = parts[4] || '';
-        const sortIndex = parseInt(parts[5]) || 0;
-        const isCurrent = parts[6] === '1';
-        
-        let settingsConfig: Record<string, any> = {};
-        try {
-          if (settingsConfigStr && settingsConfigStr.trim()) {
-            settingsConfig = JSON.parse(settingsConfigStr);
+      const id = result.id;
+      const name = result.name;
+      let settingsConfig: Record<string, any> = {};
+      try {
+        if (result.settings_config) {
+          if (typeof result.settings_config === 'string') {
+            settingsConfig = JSON.parse(result.settings_config);
+          } else {
+            settingsConfig = result.settings_config;
           }
-        } catch {
-          // Ignore parse errors
         }
-        
-        return {
-          id,
-          name,
-          type: this.inferProviderType(id),
-          isActive: isCurrent,
-          config: {
-            ...settingsConfig,
-            websiteUrl,
-            notes,
-            sortIndex,
-          },
-        };
+      } catch {
+        // Ignore parse errors
       }
       
-      return null;
+      return {
+        id,
+        name,
+        type: this.inferProviderType(id),
+        isActive: result.is_current === 1 || result.is_current === true,
+        config: {
+          ...settingsConfig,
+          websiteUrl: result.website_url || '',
+          notes: result.notes || '',
+          sortIndex: result.sort_index || 0,
+        },
+      };
     } catch (error) {
       console.error('Error getting provider by ID:', error);
       return null;

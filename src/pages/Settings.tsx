@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sun, Moon, Monitor, Bell, RefreshCw } from 'lucide-react';
+import { Bell, RefreshCw } from 'lucide-react';
 import { Card, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
 import { settingsApi } from '../services/api';
@@ -41,13 +41,6 @@ export function Settings() {
       await settingsApi.update(settings);
       setSuccess('Settings saved successfully!');
       
-      // Apply theme
-      if (settings.theme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else if (settings.theme === 'light') {
-        document.documentElement.classList.remove('dark');
-      }
-      
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
@@ -55,12 +48,6 @@ export function Settings() {
       setIsSaving(false);
     }
   };
-
-  const themeOptions = [
-    { value: 'light', label: 'Light', icon: Sun },
-    { value: 'dark', label: 'Dark', icon: Moon },
-    { value: 'system', label: 'System', icon: Monitor },
-  ];
 
   if (isLoading) {
     return (
@@ -95,47 +82,6 @@ export function Settings() {
           <p className="text-emerald-600 dark:text-emerald-400">{success}</p>
         </div>
       )}
-
-      {/* Theme Settings */}
-      <Card>
-        <CardHeader
-          title="Appearance"
-          subtitle="Customize how the app looks"
-        />
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
-              Theme
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              {themeOptions.map((option) => (
-                <button
-                  key={option.value}
-                  onClick={() => setSettings({ ...settings, theme: option.value as AppSettings['theme'] })}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                    settings.theme === option.value
-                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                      : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
-                  }`}
-                >
-                  <option.icon className={`w-6 h-6 ${
-                    settings.theme === option.value
-                      ? 'text-primary-600 dark:text-primary-400'
-                      : 'text-slate-400'
-                  }`} />
-                  <span className={`text-sm font-medium ${
-                    settings.theme === option.value
-                      ? 'text-primary-600 dark:text-primary-400'
-                      : 'text-slate-600 dark:text-slate-400'
-                  }`}>
-                    {option.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Card>
 
       {/* Behavior Settings */}
       <Card>

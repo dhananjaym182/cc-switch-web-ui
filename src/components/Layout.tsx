@@ -38,7 +38,7 @@ export function Layout({ onLogout }: LayoutProps) {
   const toggleMobileSidebar = () => setMobileSidebarOpen(!mobileSidebarOpen);
 
   return (
-    <div className={`h-screen overflow-hidden bg-slate-100 dark:bg-slate-900 ${isDark ? 'dark' : 'light'}`}>
+    <div className={`h-screen flex flex-col bg-slate-100 dark:bg-slate-900 ${isDark ? 'dark' : 'light'}`}>
       {/* Sidebar */}
       <div className="hidden lg:block fixed inset-y-0 left-0 z-30">
         <Sidebar
@@ -67,7 +67,7 @@ export function Layout({ onLogout }: LayoutProps) {
 
       {/* Main content */}
       <div
-        className={`transition-all duration-300 min-h-screen ${
+        className={`transition-all duration-300 flex-1 flex flex-col min-h-0 ${
           isCollapsed ? 'lg:ml-16' : 'lg:ml-64'
         }`}
       >
@@ -77,7 +77,7 @@ export function Layout({ onLogout }: LayoutProps) {
           onToggleTheme={toggleTheme}
           onToggleSidebar={toggleMobileSidebar}
         />
-        <main className="p-4 lg:p-6 overflow-y-auto">
+        <main className="flex-1 p-4 lg:p-6 overflow-y-auto min-h-0">
           <Outlet />
         </main>
       </div>

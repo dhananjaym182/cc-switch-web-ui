@@ -12,7 +12,7 @@ router.get('/', async (_req: Request, res: Response) => {
     const appConfig = configStorage.getAppConfig();
     res.json({
       success: true,
-      data: appConfig.settings,
+      data: { settings: appConfig.settings },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to get settings';
@@ -44,7 +44,7 @@ router.put('/', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: appConfig.settings,
+      data: { settings: appConfig.settings },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update settings';

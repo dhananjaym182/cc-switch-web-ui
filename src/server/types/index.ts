@@ -197,6 +197,8 @@ export interface AppConfig {
     lastProviderId: string | null;
     lastProfileId: string | null;
     autoSwitch: boolean;
+    theme?: 'light' | 'dark' | 'system';
+    notifications?: boolean;
   };
 }
 

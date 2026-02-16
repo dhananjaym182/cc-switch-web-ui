@@ -58,6 +58,8 @@ export class ConfigStorage {
         lastProviderId: null,
         lastProfileId: null,
         autoSwitch: false,
+        theme: 'dark',
+        notifications: true,
       },
     };
 

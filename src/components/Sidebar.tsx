@@ -8,7 +8,6 @@ import {
   Settings,
   LogOut,
   ChevronLeft,
-  ChevronRight,
   Database,
   MessageSquare,
   Zap,
@@ -45,24 +44,27 @@ export function Sidebar({ isCollapsed, onToggle, onLogout }: SidebarProps) {
     >
       {/* Logo */}
       <div className="flex items-center justify-between h-14 px-4 border-b border-slate-800 flex-shrink-0">
-        {!isCollapsed && (
+        {isCollapsed ? (
+          <button
+            onClick={onToggle}
+            className="flex items-center justify-center w-full"
+          >
+            <img src="/logo.svg" alt="CC Switch Logo" className="w-8 h-8 rounded-lg" />
+          </button>
+        ) : (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-cyan-400 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">CC</span>
-            </div>
+            <img src="/logo.svg" alt="CC Switch Logo" className="w-8 h-8 rounded-lg" />
             <span className="font-semibold text-white">Switch UI</span>
           </div>
         )}
-        <button
-          onClick={onToggle}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-        >
-          {isCollapsed ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
+        {!isCollapsed && (
+          <button
+            onClick={onToggle}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          >
             <ChevronLeft className="w-5 h-5" />
-          )}
-        </button>
+          </button>
+        )}
       </div>
 
       {/* Navigation - Scrollable area */}
